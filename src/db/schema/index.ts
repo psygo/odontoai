@@ -3,3 +3,4 @@ export * from "./dentists";
 export * from "./patients";
 export * from "./appointments";
 export * from "./payments";
+export * from "./users";
