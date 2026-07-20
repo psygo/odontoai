@@ -20,7 +20,7 @@ export default function SignUpPage() {
           name="clinicName"
           type="text"
           required
-          className="rounded border border-black/15 dark:border-white/20 px-3 py-2 text-sm"
+          className="rounded border border-black/15 px-3 py-2 text-sm"
         />
       </div>
 
@@ -34,7 +34,7 @@ export default function SignUpPage() {
           type="text"
           required
           autoComplete="name"
-          className="rounded border border-black/15 dark:border-white/20 px-3 py-2 text-sm"
+          className="rounded border border-black/15 px-3 py-2 text-sm"
         />
       </div>
 
@@ -48,7 +48,7 @@ export default function SignUpPage() {
           type="email"
           required
           autoComplete="email"
-          className="rounded border border-black/15 dark:border-white/20 px-3 py-2 text-sm"
+          className="rounded border border-black/15 px-3 py-2 text-sm"
         />
       </div>
 
@@ -63,7 +63,7 @@ export default function SignUpPage() {
           required
           minLength={8}
           autoComplete="new-password"
-          className="rounded border border-black/15 dark:border-white/20 px-3 py-2 text-sm"
+          className="rounded border border-black/15 px-3 py-2 text-sm"
         />
       </div>
 
@@ -77,7 +77,7 @@ export default function SignUpPage() {
         {isPending ? "Criando..." : "Criar conta"}
       </button>
 
-      <p className="text-sm text-center text-black/60 dark:text-white/60">
+      <p className="text-sm text-center text-black/60">
         Já tem uma conta?{" "}
         <Link href="/sign-in" className="underline">
           Entrar
