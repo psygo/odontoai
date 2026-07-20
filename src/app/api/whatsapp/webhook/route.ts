@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse("Unknown WhatsApp number", { status: 404 });
   }
 
-  const phone = inbound.from.startsWith("+") ? inbound.from : `+${inbound.from}`;
+  const phone = inbound.waId.startsWith("+") ? inbound.waId : `+${inbound.waId}`;
 
   let patient = await db.query.patients.findFirst({
     where: and(eq(patients.clinicId, clinic.id), eq(patients.phone, phone)),
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     incomingText: inbound.text,
   });
 
-  await sendWhatsAppText(inbound.phoneNumberId, inbound.from, replyText);
+  await sendWhatsAppText(inbound.phoneNumberId, inbound.waId, replyText);
 
   return NextResponse.json({ status: "ok" });
 }

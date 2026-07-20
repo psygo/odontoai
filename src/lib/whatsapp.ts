@@ -50,6 +50,11 @@ export function verifyWhatsAppSignature(rawBody: string, signatureHeader: string
 export interface InboundWhatsAppMessage {
   phoneNumberId: string;
   from: string;
+  // Canonical WhatsApp ID to send replies to. For most countries this equals
+  // `from`, but Brazilian numbers can have a mismatched `messages[].from` due
+  // to the extra mobile "9" digit — sending to `from` is silently accepted by
+  // the Graph API but never delivered. Always reply to `waId`, not `from`.
+  waId: string;
   text: string;
   waMessageId: string;
 }
@@ -64,6 +69,7 @@ export function parseInboundWhatsAppMessage(payload: unknown): InboundWhatsAppMe
   const value = change?.value as
     | {
         metadata?: { phone_number_id?: string };
+        contacts?: { wa_id?: string }[];
         messages?: { id?: string; from?: string; type?: string; text?: { body?: string } }[];
       }
     | undefined;
@@ -78,6 +84,7 @@ export function parseInboundWhatsAppMessage(payload: unknown): InboundWhatsAppMe
   return {
     phoneNumberId,
     from: message.from,
+    waId: value?.contacts?.[0]?.wa_id ?? message.from,
     text: message.text.body,
     waMessageId: message.id,
   };
