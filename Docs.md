@@ -12,12 +12,15 @@ staff manage the calendar, patient records, and payments.
   driver — needed because `neon-http` doesn't support `db.transaction()`
 - Auth.js v5 (NextAuth), Credentials provider (email + password), JWT
   sessions
-- WhatsApp Business Platform (Meta Cloud API) — planned, not yet built
+- WhatsApp Business Platform (Meta Cloud API) for the patient-facing channel
+- Anthropic SDK (`claude-opus-4-8`, tool-calling via the Beta Tool Runner)
+  for the patient-facing AI agent
 
 ## Getting started
 
-1. Copy `.env.example` to `.env.local` and fill in `DATABASE_URL` (Neon) and
-   `AUTH_SECRET` (any random 32+ byte value, e.g. `openssl rand -base64 33`)
+1. Copy `.env.example` to `.env.local` and fill in `DATABASE_URL` (Neon),
+   `AUTH_SECRET` (any random 32+ byte value, e.g. `openssl rand -base64 33`),
+   `ANTHROPIC_API_KEY`, and the `WHATSAPP_*` vars (see Phase 2 section below)
 2. `npm install`
 3. `npm run db:generate` then `npm run db:migrate` to create the schema
 4. `npm run dev`
@@ -57,13 +60,49 @@ staff manage the calendar, patient records, and payments.
   identify a patient
 - `appointments` — status enum: scheduled/confirmed/completed/cancelled/no_show
 - `payments` — Pix/boleto/card/cash, amounts stored in cents
+- `conversations` — one per patient/clinic WhatsApp thread; `status`
+  (active/escalated/closed) is how the AI hands off to clinic staff
+- `messages` — full Anthropic content-block history per conversation, so it
+  can be replayed straight back into the Messages API
+
+## Phase 2 — WhatsApp AI agent
+
+- [src/lib/whatsapp.ts](src/lib/whatsapp.ts) — send a text message via the
+  Graph API, verify the `X-Hub-Signature-256` webhook signature, parse the
+  Meta payload shape
+- [src/lib/ai/tools.ts](src/lib/ai/tools.ts) — the agent's tool set
+  (`list_dentists`, `check_availability`, `book_appointment`,
+  `list_my_appointments`, `cancel_appointment`, `escalate_to_human`), each
+  closed over `clinicId`/`patientId`/`conversationId` and backed by the same
+  Drizzle tables the dashboard uses
+- [src/lib/ai/agent.ts](src/lib/ai/agent.ts) — the system prompt (persona,
+  hard scope rules, escalation triggers, WhatsApp-native tone, few-shot
+  examples) and `respondToPatientMessage()`, which loads history, runs the
+  Beta Tool Runner, and persists the reply
+- [src/app/api/whatsapp/webhook/route.ts](src/app/api/whatsapp/webhook/route.ts)
+  — `GET` handles Meta's verification challenge; `POST` verifies the
+  signature, resolves the clinic from `clinics.whatsappPhoneNumberId`,
+  finds-or-creates the patient/conversation, calls the agent, sends the
+  reply
+- **Known simplification**: the webhook currently runs the LLM turn inline
+  (no queue) — fine at low volume, but before real traffic this should move
+  to a queue (Inngest/QStash) so the webhook acks in milliseconds instead of
+  holding the connection open for the LLM round trip
+- **`AI_MOCK_MODE=true`** (dev only) — `respondToPatientMessage()` skips the
+  real Anthropic call and returns a canned reply, so the webhook → DB →
+  WhatsApp-send pipeline can be exercised end-to-end without spending API
+  credits. It still writes real `messages`/`conversations` rows. Never set
+  this in production — added while the Anthropic account was blocked on a
+  billing/payment issue.
+- To connect a real WhatsApp number: Meta Business verification, a
+  WhatsApp Business phone number, set `whatsappPhoneNumberId` on the
+  clinic row, and fill in the `WHATSAPP_*` env vars
 
 ## Roadmap
 
-1. **Phase 1 (current)** — dentist dashboard: calendar, patients, manual
+1. **Phase 1 (done)** — dentist dashboard: calendar, patients, manual
    payment tracking, authentication
-2. **Phase 2** — WhatsApp AI scheduling agent (Meta Cloud API, tool-calling
-   against the same appointments table)
+2. **Phase 2 (current)** — WhatsApp AI scheduling agent
 3. **Phase 3** — prescriptions: AI drafts, dentist reviews and signs before
    it's sent to the patient (never AI-authored/autonomous)
 4. **Phase 4** — invoicing/payment automation: NF-e/NFS-e via a provider
