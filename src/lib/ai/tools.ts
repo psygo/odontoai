@@ -2,9 +2,20 @@ import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { and, eq, gte, lte, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { appointments, conversations, dentists } from "@/db/schema";
+import { appointments, conversations, dentists, prescriptions } from "@/db/schema";
+import { sendWhatsAppReply } from "@/lib/whatsapp";
 
-export function createPatientTools(clinicId: string, patientId: string, conversationId: string) {
+interface WhatsAppContext {
+  phoneNumberId: string;
+  patientWaId: string;
+}
+
+export function createPatientTools(
+  clinicId: string,
+  patientId: string,
+  conversationId: string,
+  whatsapp: WhatsAppContext,
+) {
   const listDentists = betaZodTool({
     name: "list_dentists",
     description:
@@ -130,5 +141,70 @@ export function createPatientTools(clinicId: string, patientId: string, conversa
     },
   });
 
-  return [listDentists, checkAvailability, bookAppointment, listMyAppointments, cancelAppointment, escalateToHuman];
+  const listPrescriptions = betaZodTool({
+    name: "list_prescriptions",
+    description:
+      "List the current patient's signed prescriptions (id, date, dentist name only — never the medication content). Use this before send_prescription when the patient asks for a receita, to check how many exist and, if there's more than one, ask which one they mean.",
+    inputSchema: z.object({}),
+    run: async () => {
+      const rows = await db.query.prescriptions.findMany({
+        where: and(eq(prescriptions.patientId, patientId), eq(prescriptions.status, "signed")),
+        with: { dentist: { columns: { name: true } } },
+        columns: { id: true, signedAt: true },
+        orderBy: (p, { desc }) => [desc(p.signedAt)],
+      });
+      return JSON.stringify(
+        rows.map((row) => ({ id: row.id, signedAt: row.signedAt, dentistName: row.dentist.name })),
+      );
+    },
+  });
+
+  // The prescription text is sent directly here, out of band from the model's
+  // own reply — the model never receives the content, so it can never
+  // paraphrase, summarize, or alter a signed prescription before it reaches
+  // the patient. It only learns whether the send succeeded.
+  const sendPrescription = betaZodTool({
+    name: "send_prescription",
+    description:
+      "Send a signed prescription to the patient on WhatsApp, exactly as the dentist wrote it. Requires a prescriptionId from list_prescriptions. If the patient only has one signed prescription, you may call this directly without asking which one.",
+    inputSchema: z.object({ prescriptionId: z.string() }),
+    run: async ({ prescriptionId }) => {
+      const prescription = await db.query.prescriptions.findFirst({
+        where: and(
+          eq(prescriptions.id, prescriptionId),
+          eq(prescriptions.patientId, patientId),
+          eq(prescriptions.clinicId, clinicId),
+          eq(prescriptions.status, "signed"),
+        ),
+      });
+      if (!prescription) {
+        return JSON.stringify({ ok: false, error: "Prescription not found or not signed yet." });
+      }
+
+      try {
+        await sendWhatsAppReply(whatsapp.phoneNumberId, whatsapp.patientWaId, prescription.content);
+      } catch (error) {
+        console.error("send_prescription: WhatsApp dispatch failed:", error);
+        return JSON.stringify({ ok: false, error: "WhatsApp send failed, ask the patient to try again shortly." });
+      }
+
+      await db
+        .update(prescriptions)
+        .set({ sentAt: prescription.sentAt ?? new Date() })
+        .where(eq(prescriptions.id, prescriptionId));
+
+      return JSON.stringify({ ok: true });
+    },
+  });
+
+  return [
+    listDentists,
+    checkAvailability,
+    bookAppointment,
+    listMyAppointments,
+    cancelAppointment,
+    escalateToHuman,
+    listPrescriptions,
+    sendPrescription,
+  ];
 }

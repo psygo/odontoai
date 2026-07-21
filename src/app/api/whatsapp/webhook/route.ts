@@ -92,6 +92,8 @@ export async function POST(req: NextRequest) {
     conversationId: conversation.id,
     incomingText: inbound.text,
     waMessageId: inbound.waMessageId,
+    phoneNumberId: inbound.phoneNumberId,
+    patientWaId: inbound.waId,
   });
 
   // null means this waMessageId was already processed by a prior (retried) delivery.

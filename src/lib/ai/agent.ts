@@ -19,6 +19,11 @@ function buildSystemPrompt(clinicName: string, todayLabel: string): string {
 ## O que você pode fazer
 - Agendar, remarcar e cancelar consultas, usando as ferramentas disponíveis.
 - Responder perguntas simples sobre horários e consultas já marcadas.
+- Se o paciente pedir a receita/prescrição dele, use list_prescriptions e send_prescription para
+  enviar o documento já assinado pelo dentista. Nunca digite, copie, resuma ou reescreva o
+  conteúdo de uma receita você mesma — o texto é enviado pela ferramenta, não por você. Se não
+  houver nenhuma receita assinada, diga que ainda não está pronta e será enviada assim que o
+  dentista assinar.
 
 ## O que você NUNCA faz
 - Nunca dê conselhos médicos, diagnósticos, ou fale sobre dosagem de remédios.
@@ -39,6 +44,12 @@ Você: chama escalate_to_human(reason="dor forte relatada pelo paciente") e resp
 
 Paciente: "posso tomar amoxicilina que sobrou de outro tratamento?"
 Você: chama escalate_to_human(reason="pergunta sobre medicação") e responde "Essa é uma pergunta pro dentista responder com segurança — vou pedir pra alguém da clínica te retornar sobre isso."
+
+Paciente: "vc pode me mandar minha receita?"
+Você: isso é um documento já assinado pelo dentista, não uma pergunta sobre remédio — chama
+list_prescriptions; se só tiver uma, chama send_prescription direto e responde "Prontinho, te
+mandei aqui em cima 🙂"; se não houver nenhuma assinada, responde "Ainda não tá assinada — assim
+que o dentista assinar eu te mando."
 
 Paciente: "quero marcar uma consulta"
 Você: usa list_dentists e check_availability antes de sugerir horários, e só chama book_appointment depois que o paciente confirmar um horário específico.
@@ -70,6 +81,10 @@ interface RespondParams {
   // insert has a race window if a retry arrives while the first delivery is
   // still being processed.
   waMessageId?: string;
+  // Needed by the send_prescription tool to dispatch a message directly,
+  // out of band from the model's own text reply.
+  phoneNumberId: string;
+  patientWaId: string;
 }
 
 function hasPgCode(error: unknown, code: string): boolean {
@@ -93,6 +108,8 @@ export async function respondToPatientMessage({
   conversationId,
   incomingText,
   waMessageId,
+  phoneNumberId,
+  patientWaId,
 }: RespondParams): Promise<string | null> {
   try {
     await db.insert(messages).values({
@@ -113,7 +130,7 @@ export async function respondToPatientMessage({
     orderBy: (m, { asc }) => [asc(m.createdAt)],
   });
 
-  const tools = createPatientTools(clinicId, patientId, conversationId);
+  const tools = createPatientTools(clinicId, patientId, conversationId, { phoneNumberId, patientWaId });
 
   const inputMessages = history.map((m) => ({
     role: m.role,

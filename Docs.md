@@ -272,6 +272,54 @@ implemented across [agent.ts](src/lib/ai/agent.ts) (prompt) and
   fresh); no sentiment-based escalation heuristics beyond the explicit
   keyword-driven rules already in the "nunca faz" section.
 
+## Phase 3 — Prescriptions
+
+Prescriptions are authored and signed entirely by the dentist in the
+dashboard — **the AI never drafts, writes, or alters medication content**.
+The WhatsApp agent's only role is to forward an already-signed document to
+the patient on request, verbatim.
+
+- **Schema** ([prescriptions.ts](src/db/schema/prescriptions.ts)): a
+  `prescriptions` table with a `draft`/`signed` status. `draft` rows are
+  invisible to the WhatsApp agent entirely; signing
+  (`signPrescriptionAction` in
+  [dashboard/prescriptions/actions.ts](src/app/dashboard/prescriptions/actions.ts))
+  sets `signedAt` and is treated as final — there's no unsign/edit action,
+  matching how a real signed prescription can't be quietly edited after
+  the fact.
+- **Dashboard** ([dashboard/prescriptions/](src/app/dashboard/prescriptions/)):
+  a dentist creates a prescription (patient, dentist, free-text content)
+  as a draft, then signs it once it's final. Also surfaced on each
+  patient's detail page alongside their appointments/payments.
+- **WhatsApp tools** ([lib/ai/tools.ts](src/lib/ai/tools.ts)):
+  - `list_prescriptions` returns only `id`/`signedAt`/dentist name for the
+    patient's **signed** prescriptions — the medication content is
+    deliberately never included in what the model sees, so there's nothing
+    for it to read, remember, or repeat even by accident.
+  - `send_prescription` takes a `prescriptionId`, re-verifies clinic/
+    patient/`status="signed"` scoping server-side (never trusts anything
+    the model inferred), and sends the stored `content` directly via
+    `sendWhatsAppReply` — **the model's own reply text is never the
+    vehicle for the prescription content**. This means the AI can't
+    paraphrase, summarize, or subtly alter a legal medical document; the
+    tool either forwards the exact signed text or reports failure.
+  - Unlike every other tool in this file, `send_prescription` makes an
+    external HTTP call (the WhatsApp send) rather than just touching the
+    DB, so its `run()` wraps that call in try/catch and returns
+    `{ok: false, ...}` on failure instead of throwing — a thrown error
+    here would otherwise crash the whole tool-runner turn the same way
+    the unguarded Neon pool error used to crash the webhook (see Phase 2
+    fixes above).
+- **Known limitation:** signing here is an in-app attestation (dentist
+  clicks "Assinar" while logged in), not an ICP-Brasil digital signature.
+  It's an audit-trail record (`dentistId` + `signedAt`), not yet a
+  legally-dispensable e-prescription on its own — real dispensing still
+  relies on whatever physical/certified document the clinic issues
+  outside this flow. Also, proactive dashboard-triggered sends aren't
+  implemented: WhatsApp's 24-hour session-message policy means free-form
+  text (like a prescription) can only be sent in response to the patient
+  messaging first, which is exactly the `send_prescription` flow above.
+
 ## Roadmap
 
 1. **Phase 1 (done)** — dentist dashboard: calendar, patients, payments,
@@ -281,8 +329,14 @@ implemented across [agent.ts](src/lib/ai/agent.ts) (prompt) and
    including an actual `appointments` row created via the tool-calling
    loop. `AI_MOCK_MODE` remains available for dev/demo use without
    spending API credits.
-3. **Phase 3** — prescriptions: AI drafts, dentist reviews and signs before
-   it's sent to the patient (never AI-authored/autonomous)
+3. **Phase 3 (MVP done)** — prescriptions: dentist authors and signs in the
+   dashboard, WhatsApp agent forwards the signed document to the patient
+   verbatim on request (never AI-authored). DB-layer scoping and state
+   transitions verified against the real database; the actual WhatsApp
+   dispatch call itself wasn't live-tested end-to-end to avoid hitting the
+   real Graph API with test data. Still open: no e-signature (see
+   limitation above), no notification to the dentist when a patient asks
+   for a prescription that isn't signed yet.
 4. **Phase 4** — invoicing/payment automation: NF-e/NFS-e via a provider
    (Focus NFe, eNotas) and Pix/boleto/card collection (Asaas, Pagar.me)
 

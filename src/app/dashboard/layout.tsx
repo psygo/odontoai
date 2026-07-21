@@ -5,6 +5,7 @@ import { signOutAction } from "./actions";
 const NAV_ITEMS = [
   { href: "/dashboard/calendar", label: "Agenda" },
   { href: "/dashboard/patients", label: "Pacientes" },
+  { href: "/dashboard/prescriptions", label: "Receitas" },
   { href: "/dashboard/payments", label: "Pagamentos" },
   { href: "/dashboard/dentists", label: "Equipe" },
 ];
