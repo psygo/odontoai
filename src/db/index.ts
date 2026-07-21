@@ -13,4 +13,12 @@ neonConfig.webSocketConstructor = ws;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+// node-postgres Pools emit "error" when an idle pooled connection drops
+// (e.g. Neon closing it after idling) — without a listener, Node treats that
+// as an uncaught exception and can crash the whole process, not just the
+// in-flight query.
+pool.on("error", (err: Error) => {
+  console.error("Neon pool connection error (idle client dropped):", err);
+});
+
 export const db = drizzle(pool, { schema });

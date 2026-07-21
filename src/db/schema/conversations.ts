@@ -29,5 +29,9 @@ export const messages = pgTable("messages", {
   // Anthropic content-block array (text/tool_use/tool_result) — stored as-is so
   // conversation history can be replayed straight back into the Messages API.
   content: jsonb("content").notNull(),
+  // Meta's message id (only set on inbound/user messages) — Meta redelivers
+  // webhooks it thinks timed out, so this is the idempotency key that stops a
+  // slow LLM turn from producing two independent replies to the same message.
+  waMessageId: text("wa_message_id").unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

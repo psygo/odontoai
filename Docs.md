@@ -122,7 +122,8 @@ All four dashboard sections are wired to real data (no more placeholders):
 
 - [src/lib/whatsapp.ts](src/lib/whatsapp.ts) — send a text message via the
   Graph API, verify the `X-Hub-Signature-256` webhook signature, parse the
-  Meta payload shape
+  Meta payload shape, and `sendWhatsAppReply()` (splits a multi-paragraph
+  reply into separate WhatsApp messages — see Humanization below)
 - [src/lib/ai/tools.ts](src/lib/ai/tools.ts) — the agent's tool set
   (`list_dentists`, `check_availability`, `book_appointment`,
   `list_my_appointments`, `cancel_appointment`, `escalate_to_human`), each
@@ -131,7 +132,32 @@ All four dashboard sections are wired to real data (no more placeholders):
 - [src/lib/ai/agent.ts](src/lib/ai/agent.ts) — the system prompt (persona,
   hard scope rules, escalation triggers, WhatsApp-native tone, few-shot
   examples) and `respondToPatientMessage()`, which loads history, runs the
-  Beta Tool Runner, and persists the reply
+  Beta Tool Runner, and persists the reply. Returns `string | null` — `null`
+  means the inbound message was a duplicate delivery and nothing should be
+  sent (see below).
+- **Persist the Tool Runner's full turn sequence, not just the final
+  message.** `client.beta.messages.toolRunner()` can loop through several
+  internal tool_use → tool_result round trips before producing the final
+  text reply; awaiting it only gives you that last message; the intermediate
+  turns are otherwise silently discarded — not persisted, and (worse) not
+  replayed into the next turn's history, so the model can lose track of
+  what it already checked or booked and start hallucinating confirmations.
+  The fix: keep the `runner` object (`const runner = client.beta.messages.toolRunner(...)`),
+  and after `await runner` resolves, read `runner.params.messages` — a
+  public getter (verified directly against
+  `node_modules/@anthropic-ai/sdk/src/lib/tools/BetaToolRunner.ts`, not
+  guessed) exposing the array the runner itself appends to on every
+  iteration, i.e. the *complete* sequence: `[...inputMessages, assistantTurn1
+  (tool_use), toolResultTurn1, assistantTurn2, ..., finalAssistantTurn]`.
+  Slice off the input length and persist each remaining turn as its own row.
+- **Ground the model with today's actual date.** Without it, the model has
+  no way to resolve a date given without a year (e.g. a patient writing
+  "28/07") and silently guesses — in testing it defaulted to the wrong year
+  entirely, producing a real appointment booked a year off. Fixed by
+  computing today's date (`America/Sao_Paulo`) at request time and passing
+  it into `buildSystemPrompt()`. This does mean the system prompt's cached
+  prefix (`cache_control: ephemeral`) invalidates once per day instead of
+  never — an acceptable tradeoff for not double-booking a year wrong.
 - [src/app/api/whatsapp/webhook/route.ts](src/app/api/whatsapp/webhook/route.ts)
   — `GET` handles Meta's verification challenge; `POST` verifies the
   signature, resolves the clinic from `clinics.whatsappPhoneNumberId`,
@@ -140,13 +166,50 @@ All four dashboard sections are wired to real data (no more placeholders):
 - **Known simplification**: the webhook currently runs the LLM turn inline
   (no queue) — fine at low volume, but before real traffic this should move
   to a queue (Inngest/QStash) so the webhook acks in milliseconds instead of
-  holding the connection open for the LLM round trip
+  holding the connection open for the LLM round trip. This is also *why* the
+  duplicate-delivery issue below happens in the first place — a queue would
+  ack Meta immediately and remove the retry trigger, not just handle it.
+- **Meta redelivers a webhook it thinks timed out — dedupe on `waMessageId`.**
+  Once real (non-mocked) LLM calls got slow enough to approach Meta's
+  delivery timeout, a single patient message started producing two
+  *independent* AI replies (same intent, differently worded — not literally
+  duplicated text, since each redelivery is its own LLM completion). Fixed
+  by adding a unique `messages.waMessageId` column
+  ([relations/schema](src/db/schema/conversations.ts)) and making the
+  insert itself the dedup point: `respondToPatientMessage()` tries to insert
+  the inbound message with its `waMessageId`, and if that hits the unique
+  constraint (checked via `error.cause.code === "23505"`, since Drizzle
+  wraps the underlying pg error), it returns `null` instead of calling the
+  LLM again. This is deliberately insert-time (atomic), not a
+  check-then-insert — a plain `SELECT` first would still race if a retry
+  arrives while the first delivery is mid-flight. The webhook route also
+  does a cheap pre-check `SELECT` before doing any patient/conversation
+  work, purely as a fast path for the common case — wrapped in try/catch to
+  fail open (proceed rather than 500) if it errors, since the atomic insert
+  is the actual guarantee, not this pre-check.
+- **[src/db/index.ts](src/db/index.ts) needs a `pool.on("error", ...)`
+  handler.** Neon's pooled WebSocket connections can go stale (idled out
+  after inactivity) and node-postgres's `Pool` emits an `"error"` event when
+  it discovers a dead pooled client — without a listener, Node treats that
+  as an uncaught exception on an otherwise-unrelated request, not just a
+  failed query. Surfaced as `ETIMEDOUT` / a `CLOSED`-state `WebSocket` in the
+  dedup pre-check after a long-idle dev session. The listener just logs; the
+  pool still needs the event handled at all to correctly evict and recreate
+  the broken client on the next checkout.
 - **`AI_MOCK_MODE=true`** (dev only) — `respondToPatientMessage()` skips the
   real Anthropic call and returns a canned reply, so the webhook → DB →
   WhatsApp-send pipeline can be exercised end-to-end without spending API
   credits. It still writes real `messages`/`conversations` rows. Never set
-  this in production — added while the Anthropic account was blocked on a
-  billing/payment issue.
+  this in production.
+- **`WHATSAPP_ACCESS_TOKEN` keeps expiring** if you're using the temporary
+  token from the API Setup screen (24h, and regenerating invalidates the
+  old one immediately). For a token that doesn't need manual regeneration:
+  Meta Business Settings → **Users → System Users** → create one → assign
+  it access to the app/WhatsApp Business Account with
+  `whatsapp_business_messaging` (+ `whatsapp_business_management` for the
+  `subscribed_apps` call above) → generate its token with **no expiration**
+  (System User tokens support this; personal user tokens cap at 60 days).
+  Use that as `WHATSAPP_ACCESS_TOKEN` instead.
 - To connect a real WhatsApp number: Meta Business verification, a
   WhatsApp Business phone number, set `whatsappPhoneNumberId` on the
   clinic row, and fill in the `WHATSAPP_*` env vars
@@ -177,14 +240,47 @@ All four dashboard sections are wired to real data (no more placeholders):
   Settings — needs a real, LGPD-compliant policy before production, not
   just a placeholder.
 
+### Humanization
+
+Techniques used to make "Bia" read like a person texting, not a bot,
+implemented across [agent.ts](src/lib/ai/agent.ts) (prompt) and
+[whatsapp.ts](src/lib/whatsapp.ts) (delivery):
+
+- **Multi-bubble replies.** The prompt instructs the model to split a
+  reply with more than one idea into 2-3 short chunks separated by a blank
+  line. `sendWhatsAppReply()` splits on that and sends each chunk as its
+  own WhatsApp message — real people send several short texts in a row
+  rather than one long paragraph.
+- **Typing-delay simulation.** Between chunks (not before the first),
+  there's a short delay roughly proportional to chunk length
+  (`400 + length * 30ms`, clamped to 600-2500ms) so replies don't all land
+  in the same instant.
+- **Tone mirroring.** The prompt explicitly says to match the patient's
+  register — casual/no punctuation gets a casual reply, formal gets a
+  formal one — rather than always defaulting to one voice.
+- **Varied openers.** The model is told not to repeat the same opening
+  phrase (e.g. "Prontinho!", "Boa notícia!") across a conversation, since
+  reusing whatever worked well in-context is a common way LLM replies read
+  as repetitive/robotic over a longer chat.
+- **Few-shot examples cover a range of registers**, not just the happy
+  path: a formal greeting, an irritated/repeat-complaint patient (still
+  routes to `escalate_to_human`, but acknowledges the frustration instead
+  of a flat corporate response), and a scheduling conflict (never invents
+  an alternative time — always checks real availability first).
+- Still open, not yet implemented: no persisted memory of a patient's
+  preferred tone across separate conversations (each conversation starts
+  fresh); no sentiment-based escalation heuristics beyond the explicit
+  keyword-driven rules already in the "nunca faz" section.
+
 ## Roadmap
 
 1. **Phase 1 (done)** — dentist dashboard: calendar, patients, payments,
    team (dentists), authentication — all wired to real data
-2. **Phase 2 (done, pending Anthropic credits)** — WhatsApp AI scheduling
-   agent. Verified end-to-end with a real WhatsApp number and real
-   messages; the only remaining gap is that live AI replies need Anthropic
-   API credits (`AI_MOCK_MODE` stands in until then)
+2. **Phase 2 (done)** — WhatsApp AI scheduling agent. Verified end-to-end
+   with a real WhatsApp number and a real (non-mocked) Anthropic call,
+   including an actual `appointments` row created via the tool-calling
+   loop. `AI_MOCK_MODE` remains available for dev/demo use without
+   spending API credits.
 3. **Phase 3** — prescriptions: AI drafts, dentist reviews and signs before
    it's sent to the patient (never AI-authored/autonomous)
 4. **Phase 4** — invoicing/payment automation: NF-e/NFS-e via a provider

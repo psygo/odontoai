@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { clinics, conversations, patients } from "@/db/schema";
+import { clinics, conversations, messages, patients } from "@/db/schema";
 import { respondToPatientMessage } from "@/lib/ai/agent";
-import { parseInboundWhatsAppMessage, sendWhatsAppText, verifyWhatsAppSignature } from "@/lib/whatsapp";
+import { parseInboundWhatsAppMessage, sendWhatsAppReply, verifyWhatsAppSignature } from "@/lib/whatsapp";
 
 // One LLM turn (plus tool calls) can take a while; give it room on serverless.
 export const maxDuration = 60;
@@ -32,6 +32,24 @@ export async function POST(req: NextRequest) {
   // Non-text messages (delivery receipts, media, etc.) are acknowledged and ignored for now.
   if (!inbound) {
     return NextResponse.json({ status: "ignored" });
+  }
+
+  // Meta redelivers a webhook it thinks timed out, and a real LLM turn can
+  // take long enough to look like one — without this, a single patient
+  // message can produce two independent (differently-worded) AI replies.
+  // This is just a fast-path optimization (skip patient/conversation work on
+  // an obvious duplicate); the real dedup guarantee is the atomic insert
+  // inside respondToPatientMessage. So a transient DB error here should fail
+  // open (proceed) rather than 500 the whole webhook.
+  try {
+    const alreadyProcessed = await db.query.messages.findFirst({
+      where: eq(messages.waMessageId, inbound.waMessageId),
+    });
+    if (alreadyProcessed) {
+      return NextResponse.json({ status: "duplicate" });
+    }
+  } catch (error) {
+    console.error("Dedup pre-check failed, proceeding anyway:", error);
   }
 
   const clinic = await db.query.clinics.findFirst({
@@ -73,9 +91,15 @@ export async function POST(req: NextRequest) {
     patientId: patient.id,
     conversationId: conversation.id,
     incomingText: inbound.text,
+    waMessageId: inbound.waMessageId,
   });
 
-  await sendWhatsAppText(inbound.phoneNumberId, inbound.waId, replyText);
+  // null means this waMessageId was already processed by a prior (retried) delivery.
+  if (replyText === null) {
+    return NextResponse.json({ status: "duplicate" });
+  }
+
+  await sendWhatsAppReply(inbound.phoneNumberId, inbound.waId, replyText);
 
   return NextResponse.json({ status: "ok" });
 }

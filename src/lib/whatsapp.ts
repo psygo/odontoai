@@ -31,6 +31,30 @@ export async function sendWhatsAppText(phoneNumberId: string, to: string, body: 
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// A human texting back rarely sends one long paragraph — they send a couple
+// of short bubbles in a row. The agent's system prompt is instructed to
+// separate those with a blank line; this splits on that and sends each as
+// its own message, with a short delay (roughly proportional to how long it'd
+// take to type) so replies don't arrive all at once.
+export async function sendWhatsAppReply(phoneNumberId: string, to: string, fullText: string): Promise<void> {
+  const chunks = fullText
+    .split(/\n\s*\n/)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+
+  for (const [index, chunk] of chunks.entries()) {
+    if (index > 0) {
+      const delayMs = Math.min(2500, Math.max(600, 400 + chunk.length * 30));
+      await sleep(delayMs);
+    }
+    await sendWhatsAppText(phoneNumberId, to, chunk);
+  }
+}
+
 // Meta signs the raw request body with the app secret; compare against the
 // X-Hub-Signature-256 header to make sure the webhook really came from Meta.
 export function verifyWhatsAppSignature(rawBody: string, signatureHeader: string | null): boolean {
