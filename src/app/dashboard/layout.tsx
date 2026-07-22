@@ -1,46 +1,38 @@
-import Link from "next/link";
+import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
-import { signOutAction } from "./actions";
-
-const NAV_ITEMS = [
-  { href: "/dashboard/calendar", label: "Agenda" },
-  { href: "/dashboard/patients", label: "Pacientes" },
-  { href: "/dashboard/prescriptions", label: "Receitas" },
-  { href: "/dashboard/payments", label: "Pagamentos" },
-  { href: "/dashboard/dentists", label: "Equipe" },
-  { href: "/dashboard/settings", label: "Configurações" },
-];
+import { db } from "@/db";
+import { clinics } from "@/db/schema";
+import { AccountMenu } from "./_components/account-menu";
+import { initials } from "./_components/format";
+import { NavRail } from "./_components/nav-rail";
+import { SearchProvider } from "./_components/search-provider";
+import { TopBar } from "./_components/top-bar";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
+  const clinic = await db.query.clinics.findFirst({
+    where: eq(clinics.id, session!.user.clinicId),
+    columns: { name: true },
+  });
+
+  const name = session?.user?.name ?? "";
 
   return (
-    <div className="flex min-h-full">
-      <aside className="w-56 shrink-0 border-r border-black/10 p-4 flex flex-col">
-        <div className="font-semibold mb-6">OdontoAI</div>
-        <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded px-3 py-2 text-sm hover:bg-black/5"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+    <SearchProvider>
+      <div className="flex min-h-screen">
+        <aside className="flex w-19 shrink-0 flex-col items-center gap-7 bg-sidebar py-4.5">
+          <div className="flex h-9.5 w-9.5 items-center justify-center rounded-[10px] bg-accent-teal text-sm font-extrabold text-white">
+            OA
+          </div>
+          <NavRail />
+          <AccountMenu name={name} email={session?.user?.email ?? ""} initials={initials(name) || "?"} />
+        </aside>
 
-        <div className="mt-auto pt-4 border-t border-black/10">
-          <div className="text-sm font-medium">{session?.user?.name}</div>
-          <div className="text-xs text-black/60 mb-3">{session?.user?.email}</div>
-          <form action={signOutAction}>
-            <button type="submit" className="text-sm underline">
-              Sair
-            </button>
-          </form>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar clinicName={clinic?.name ?? "OdontoAI"} />
+          <main className="flex-1 overflow-auto bg-app-bg p-6">{children}</main>
         </div>
-      </aside>
-      <main className="flex-1 p-6">{children}</main>
-    </div>
+      </div>
+    </SearchProvider>
   );
 }

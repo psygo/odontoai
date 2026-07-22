@@ -4,18 +4,23 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { paymentMethod, paymentReceipts, payments, patients } from "@/db/schema";
+import { paymentMethod, paymentReceipts, paymentStatus, payments, patients } from "@/db/schema";
 
-export async function createPaymentAction(_prevState: string | undefined, formData: FormData) {
+// Handles both create and edit — a single modal/form posts here, with an
+// empty `paymentId` meaning "create a new one".
+export async function savePaymentAction(_prevState: string | undefined, formData: FormData) {
   const session = await auth();
   if (!session?.user?.clinicId) {
     return "Sessão inválida. Faça login novamente.";
   }
   const clinicId = session.user.clinicId;
 
+  const paymentIdRaw = formData.get("paymentId");
   const patientId = formData.get("patientId");
+  const appointmentIdRaw = formData.get("appointmentId");
   const amount = formData.get("amount");
   const method = formData.get("method");
+  const status = formData.get("status");
   const description = formData.get("description");
   const dueDate = formData.get("dueDate");
 
@@ -42,16 +47,33 @@ export async function createPaymentAction(_prevState: string | undefined, formDa
     return "Paciente inválido.";
   }
 
-  await db.insert(payments).values({
+  const paymentId = typeof paymentIdRaw === "string" && paymentIdRaw ? paymentIdRaw : null;
+  const values = {
     clinicId,
     patientId,
+    appointmentId: typeof appointmentIdRaw === "string" && appointmentIdRaw ? appointmentIdRaw : null,
     amountCents,
     method: method as (typeof paymentMethod.enumValues)[number],
     description: typeof description === "string" && description.trim() ? description.trim() : null,
     dueDate: typeof dueDate === "string" && dueDate.trim() ? dueDate.trim() : null,
-  });
+  };
 
+  if (paymentId) {
+    const statusValue =
+      typeof status === "string" && paymentStatus.enumValues.includes(status as (typeof paymentStatus.enumValues)[number])
+        ? (status as (typeof paymentStatus.enumValues)[number])
+        : undefined;
+    await db
+      .update(payments)
+      .set({ ...values, ...(statusValue ? { status: statusValue, ...(statusValue === "paid" ? { paidAt: new Date() } : {}) } : {}) })
+      .where(and(eq(payments.id, paymentId), eq(payments.clinicId, clinicId)));
+  } else {
+    await db.insert(payments).values(values);
+  }
+
+  revalidatePath("/dashboard");
   revalidatePath("/dashboard/payments");
+  revalidatePath(`/dashboard/patients/${patientId}`);
 }
 
 export async function markPaymentPaidAction(formData: FormData) {
@@ -66,6 +88,7 @@ export async function markPaymentPaidAction(formData: FormData) {
     .set({ status: "paid", paidAt: new Date() })
     .where(and(eq(payments.id, paymentId), eq(payments.clinicId, session.user.clinicId)));
 
+  revalidatePath("/dashboard");
   revalidatePath("/dashboard/payments");
 }
 

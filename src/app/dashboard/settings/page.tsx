@@ -12,7 +12,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">Configurações</h1>
+      <h1 className="text-xl font-semibold text-ink-strong">Configurações</h1>
       <PixKeyForm pixKey={clinic?.pixKey ?? null} />
     </div>
   );

@@ -17,9 +17,9 @@ export function PixKeyForm({ pixKey }: { pixKey: string | null }) {
         type="text"
         defaultValue={pixKey ?? ""}
         placeholder="email, telefone, CNPJ ou chave aleatória"
-        className="rounded border border-black/15 px-3 py-2 text-sm font-mono"
+        className="rounded border border-border px-3 py-2 text-sm font-mono"
       />
-      <p className="text-sm text-black/60">
+      <p className="text-sm text-ink-faint">
         Enviada exatamente como está aqui pela assistente de WhatsApp quando um paciente pergunta
         como pagar — a IA nunca digita a chave de memória.
       </p>
@@ -27,7 +27,7 @@ export function PixKeyForm({ pixKey }: { pixKey: string | null }) {
         <button
           type="submit"
           disabled={isPending}
-          className="rounded bg-foreground text-background px-3 py-2 text-sm font-medium disabled:opacity-60"
+          className="rounded bg-accent-blue text-white px-3 py-2 text-sm font-medium disabled:opacity-60"
         >
           {isPending ? "Salvando..." : "Salvar"}
         </button>

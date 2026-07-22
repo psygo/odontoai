@@ -36,6 +36,13 @@
       "when": 1784657396121,
       "tag": "0004_curvy_thunderbird",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784722888243,
+      "tag": "0005_strange_toxin",
+      "breakpoints": true
     }
   ]
 }

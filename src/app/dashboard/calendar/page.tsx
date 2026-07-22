@@ -1,106 +1,88 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import Link from "next/link";
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { appointments, dentists, patients } from "@/db/schema";
-import { updateAppointmentStatusAction } from "./actions";
-import { FullCalendarView } from "./full-calendar-view";
-import { NewAppointmentForm } from "./new-appointment-form";
+import { appointments, dentists, patients, payments } from "@/db/schema";
+import { CalendarBoard, type CalendarBoardAppointment } from "./calendar-board";
+import { clockLabel, dayRangeUtc, formatDateLongPtBr, isValidDateStr, minutesSinceGridStart, shiftDateStr, todayInClinicTZ } from "./grid-math";
 
-const STATUS_OPTIONS: { value: string; label: string }[] = [
-  { value: "scheduled", label: "Agendado" },
-  { value: "confirmed", label: "Confirmado" },
-  { value: "completed", label: "Concluído" },
-  { value: "cancelled", label: "Cancelado" },
-  { value: "no_show", label: "Faltou" },
-];
+interface CalendarPageProps {
+  searchParams: Promise<{ date?: string }>;
+}
 
-export default async function CalendarPage() {
+export default async function CalendarPage({ searchParams }: CalendarPageProps) {
+  const { date: dateParam } = await searchParams;
+  const date = isValidDateStr(dateParam) ? dateParam : todayInClinicTZ();
+  const { start, end } = dayRangeUtc(date);
+
   const session = await auth();
   const clinicId = session!.user.clinicId;
 
-  const [appointmentRows, patientRows, dentistRows] = await Promise.all([
+  const [appointmentRows, dentistRows, patientRows] = await Promise.all([
     db.query.appointments.findMany({
-      where: eq(appointments.clinicId, clinicId),
+      where: and(eq(appointments.clinicId, clinicId), gte(appointments.startsAt, start), lte(appointments.startsAt, end)),
       with: { patient: true, dentist: true },
       orderBy: (a, { asc }) => [asc(a.startsAt)],
-    }),
-    db.query.patients.findMany({
-      where: eq(patients.clinicId, clinicId),
-      orderBy: (p, { asc }) => [asc(p.name)],
-      columns: { id: true, name: true },
     }),
     db.query.dentists.findMany({
       where: eq(dentists.clinicId, clinicId),
       orderBy: (d, { asc }) => [asc(d.name)],
       columns: { id: true, name: true },
     }),
+    db.query.patients.findMany({
+      where: eq(patients.clinicId, clinicId),
+      orderBy: (p, { asc }) => [asc(p.name)],
+      columns: { id: true, name: true },
+    }),
   ]);
 
+  const appointmentIds = appointmentRows.map((a) => a.id);
+  const paidAppointmentIds = new Set(
+    appointmentIds.length
+      ? (
+          await db.query.payments.findMany({
+            where: and(eq(payments.clinicId, clinicId), inArray(payments.appointmentId, appointmentIds)),
+            columns: { appointmentId: true },
+          })
+        ).map((p) => p.appointmentId)
+      : [],
+  );
+
+  const boardAppointments: CalendarBoardAppointment[] = appointmentRows.map((a) => ({
+    id: a.id,
+    dentistId: a.dentistId,
+    dentistName: a.dentist.name,
+    patientId: a.patientId,
+    patientName: a.patient.name,
+    patientPhone: a.patient.phone,
+    service: a.service,
+    status: a.status,
+    notes: a.notes,
+    startMinutes: minutesSinceGridStart(a.startsAt),
+    durationMinutes: Math.round((a.endsAt.getTime() - a.startsAt.getTime()) / 60_000),
+    timeLabel: `${clockLabel(a.startsAt)}–${clockLabel(a.endsAt)}`,
+    hasPayment: paidAppointmentIds.has(a.id),
+  }));
+
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">Agenda</h1>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3 rounded-[10px] border border-border bg-background px-4 py-3">
+        <Link href={`/dashboard/calendar?date=${shiftDateStr(date, -1)}`} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-app-bg">
+          ‹
+        </Link>
+        <Link href={`/dashboard/calendar?date=${shiftDateStr(date, 1)}`} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-app-bg">
+          ›
+        </Link>
+        <Link
+          href={`/dashboard/calendar?date=${todayInClinicTZ()}`}
+          className="rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-ink-soft hover:bg-app-bg"
+        >
+          Hoje
+        </Link>
+        <div className="text-base font-bold text-ink-strong">{formatDateLongPtBr(date)}</div>
+      </div>
 
-      <NewAppointmentForm patients={patientRows} dentists={dentistRows} />
-
-      <FullCalendarView
-        events={appointmentRows.map((appointment) => ({
-          id: appointment.id,
-          title: `${appointment.patient.name} — ${appointment.dentist.name}`,
-          start: appointment.startsAt.toISOString(),
-          end: appointment.endsAt.toISOString(),
-          status: appointment.status,
-          patientId: appointment.patientId,
-        }))}
-      />
-
-      <h2 className="text-sm font-semibold">Todas as consultas</h2>
-      <table className="w-full text-sm text-left">
-        <thead>
-          <tr className="border-b border-black/10 text-black/60">
-            <th className="py-2 pr-4 font-medium">Horário</th>
-            <th className="py-2 pr-4 font-medium">Paciente</th>
-            <th className="py-2 pr-4 font-medium">Dentista</th>
-            <th className="py-2 pr-4 font-medium">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {appointmentRows.map((appointment) => (
-            <tr key={appointment.id} className="border-b border-black/5">
-              <td className="py-2 pr-4 whitespace-nowrap">
-                {new Date(appointment.startsAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
-              </td>
-              <td className="py-2 pr-4">{appointment.patient.name}</td>
-              <td className="py-2 pr-4">{appointment.dentist.name}</td>
-              <td className="py-2 pr-4">
-                <form action={updateAppointmentStatusAction} className="flex gap-2 items-center">
-                  <input type="hidden" name="appointmentId" value={appointment.id} />
-                  <select
-                    name="status"
-                    defaultValue={appointment.status}
-                    className="rounded border border-black/15 px-2 py-1 text-sm"
-                  >
-                    {STATUS_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button type="submit" className="text-sm underline">
-                    Salvar
-                  </button>
-                </form>
-              </td>
-            </tr>
-          ))}
-          {appointmentRows.length === 0 && (
-            <tr>
-              <td colSpan={4} className="py-4 text-black/60">
-                Nenhuma consulta agendada ainda.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      <CalendarBoard date={date} dentists={dentistRows} appointments={boardAppointments} patients={patientRows} />
     </div>
   );
 }

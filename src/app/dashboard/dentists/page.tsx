@@ -16,13 +16,13 @@ export default async function DentistsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">Equipe</h1>
+      <h1 className="text-xl font-semibold text-ink-strong">Equipe</h1>
 
       <NewDentistForm />
 
       <table className="w-full text-sm text-left">
         <thead>
-          <tr className="border-b border-black/10 text-black/60">
+          <tr className="border-b border-border text-ink-faint">
             <th className="py-2 pr-4 font-medium">Nome</th>
             <th className="py-2 pr-4 font-medium">E-mail</th>
             <th className="py-2 pr-4 font-medium">CRO</th>
@@ -30,7 +30,7 @@ export default async function DentistsPage() {
         </thead>
         <tbody>
           {rows.map((dentist) => (
-            <tr key={dentist.id} className="border-b border-black/5">
+            <tr key={dentist.id} className="border-b border-border/60">
               <td className="py-2 pr-4">
                 <Link href={`/dashboard/dentists/${dentist.id}`} className="underline">
                   {dentist.name}
@@ -44,7 +44,7 @@ export default async function DentistsPage() {
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={3} className="py-4 text-black/60">
+              <td colSpan={3} className="py-4 text-ink-faint">
                 Nenhum dentista cadastrado ainda.
               </td>
             </tr>

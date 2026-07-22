@@ -1,55 +1,21 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { patients } from "@/db/schema";
 
-export async function createPatientAction(_prevState: string | undefined, formData: FormData) {
+// Handles both create and edit — a single modal/form posts here, with an
+// empty `patientId` meaning "create a new one".
+export async function savePatientAction(_prevState: string | undefined, formData: FormData) {
   const session = await auth();
   if (!session?.user?.clinicId) {
     return "Sessão inválida. Faça login novamente.";
   }
+  const clinicId = session.user.clinicId;
 
-  const name = formData.get("name");
-  const phone = formData.get("phone");
-  const cpf = formData.get("cpf");
-  const birthDate = formData.get("birthDate");
-  const email = formData.get("email");
-
-  if (typeof name !== "string" || !name.trim() || typeof phone !== "string" || !phone.trim()) {
-    return "Nome e telefone são obrigatórios.";
-  }
-
-  const normalizedPhone = phone.trim().startsWith("+") ? phone.trim() : `+${phone.trim()}`;
-
-  const existing = await db.query.patients.findFirst({
-    where: and(eq(patients.clinicId, session.user.clinicId), eq(patients.phone, normalizedPhone)),
-  });
-  if (existing) {
-    return "Já existe um paciente cadastrado com este telefone.";
-  }
-
-  await db.insert(patients).values({
-    clinicId: session.user.clinicId,
-    name: name.trim(),
-    phone: normalizedPhone,
-    cpf: typeof cpf === "string" && cpf.trim() ? cpf.trim() : null,
-    birthDate: typeof birthDate === "string" && birthDate.trim() ? birthDate.trim() : null,
-    email: typeof email === "string" && email.trim() ? email.trim().toLowerCase() : null,
-  });
-
-  revalidatePath("/dashboard/patients");
-}
-
-export async function updatePatientAction(_prevState: string | undefined, formData: FormData) {
-  const session = await auth();
-  if (!session?.user?.clinicId) {
-    return "Sessão inválida. Faça login novamente.";
-  }
-
-  const patientId = formData.get("patientId");
+  const patientIdRaw = formData.get("patientId");
   const name = formData.get("name");
   const phone = formData.get("phone");
   const cpf = formData.get("cpf");
@@ -57,38 +23,41 @@ export async function updatePatientAction(_prevState: string | undefined, formDa
   const email = formData.get("email");
   const notes = formData.get("notes");
 
-  if (
-    typeof patientId !== "string" ||
-    !patientId ||
-    typeof name !== "string" ||
-    !name.trim() ||
-    typeof phone !== "string" ||
-    !phone.trim()
-  ) {
+  if (typeof name !== "string" || !name.trim() || typeof phone !== "string" || !phone.trim()) {
     return "Nome e telefone são obrigatórios.";
   }
 
   const normalizedPhone = phone.trim().startsWith("+") ? phone.trim() : `+${phone.trim()}`;
+  const patientId = typeof patientIdRaw === "string" && patientIdRaw ? patientIdRaw : null;
 
   const existing = await db.query.patients.findFirst({
-    where: and(eq(patients.clinicId, session.user.clinicId), eq(patients.phone, normalizedPhone)),
+    where: and(
+      eq(patients.clinicId, clinicId),
+      eq(patients.phone, normalizedPhone),
+      patientId ? ne(patients.id, patientId) : undefined,
+    ),
   });
-  if (existing && existing.id !== patientId) {
-    return "Já existe outro paciente cadastrado com este telefone.";
+  if (existing) {
+    return "Já existe um paciente cadastrado com este telefone.";
   }
 
-  await db
-    .update(patients)
-    .set({
-      name: name.trim(),
-      phone: normalizedPhone,
-      cpf: typeof cpf === "string" && cpf.trim() ? cpf.trim() : null,
-      birthDate: typeof birthDate === "string" && birthDate.trim() ? birthDate.trim() : null,
-      email: typeof email === "string" && email.trim() ? email.trim().toLowerCase() : null,
-      notes: typeof notes === "string" && notes.trim() ? notes.trim() : null,
-    })
-    .where(and(eq(patients.id, patientId), eq(patients.clinicId, session.user.clinicId)));
+  const values = {
+    clinicId,
+    name: name.trim(),
+    phone: normalizedPhone,
+    cpf: typeof cpf === "string" && cpf.trim() ? cpf.trim() : null,
+    birthDate: typeof birthDate === "string" && birthDate.trim() ? birthDate.trim() : null,
+    email: typeof email === "string" && email.trim() ? email.trim().toLowerCase() : null,
+    notes: typeof notes === "string" && notes.trim() ? notes.trim() : null,
+  };
 
-  revalidatePath(`/dashboard/patients/${patientId}`);
+  if (patientId) {
+    await db.update(patients).set(values).where(and(eq(patients.id, patientId), eq(patients.clinicId, clinicId)));
+  } else {
+    await db.insert(patients).values(values);
+  }
+
+  revalidatePath("/dashboard");
   revalidatePath("/dashboard/patients");
+  if (patientId) revalidatePath(`/dashboard/patients/${patientId}`);
 }

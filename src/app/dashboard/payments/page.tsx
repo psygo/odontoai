@@ -1,31 +1,19 @@
 import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { paymentReceipts, patients, payments } from "@/db/schema";
-import { linkReceiptToPaymentAction, markPaymentPaidAction } from "./actions";
-import { NewPaymentForm } from "./new-payment-form";
+import { appointments, paymentReceipts, patients, payments } from "@/db/schema";
+import { priceForService } from "@/lib/services";
+import { formatCents } from "../_components/format";
+import { linkReceiptToPaymentAction } from "./actions";
+import type { OpenIntent } from "./payments-page-client";
+import { PaymentsPageClient, type PaymentRow } from "./payments-page-client";
 
-const METHOD_LABELS: Record<string, string> = {
-  pix: "Pix",
-  boleto: "Boleto",
-  credit_card: "Cartão de crédito",
-  debit_card: "Cartão de débito",
-  cash: "Dinheiro",
-  other: "Outro",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: "Pendente",
-  paid: "Pago",
-  overdue: "Atrasado",
-  cancelled: "Cancelado",
-};
-
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+interface PaymentsPageProps {
+  searchParams: Promise<{ new?: string; fromAppointment?: string }>;
 }
 
-export default async function PaymentsPage() {
+export default async function PaymentsPage({ searchParams }: PaymentsPageProps) {
+  const { new: newFlag, fromAppointment } = await searchParams;
   const session = await auth();
   const clinicId = session!.user.clinicId;
 
@@ -47,76 +35,82 @@ export default async function PaymentsPage() {
     }),
   ]);
 
+  let openIntent: OpenIntent | null = null;
+  if (fromAppointment) {
+    const appointment = await db.query.appointments.findFirst({
+      where: eq(appointments.id, fromAppointment),
+    });
+    if (appointment && appointment.clinicId === clinicId) {
+      openIntent = {
+        key: `from:${fromAppointment}`,
+        state: {
+          mode: "create",
+          patientId: appointment.patientId,
+          appointmentId: appointment.id,
+          description: appointment.service ?? undefined,
+          amountCents: priceForService(appointment.service),
+        },
+      };
+    }
+  } else if (newFlag === "1") {
+    openIntent = { key: "new", state: { mode: "create" } };
+  }
+
+  const rows: PaymentRow[] = paymentRows.map((p) => ({
+    id: p.id,
+    patientId: p.patientId,
+    patientName: p.patient.name,
+    appointmentId: p.appointmentId,
+    amountCents: p.amountCents,
+    method: p.method,
+    status: p.status,
+    description: p.description,
+    dueDate: p.dueDate,
+  }));
+
+  const totalBilled = rows.reduce((sum, p) => sum + p.amountCents, 0);
+  const totalDue = rows.filter((p) => p.status === "pending").reduce((sum, p) => sum + p.amountCents, 0);
+
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">Pagamentos</h1>
+      <div className="flex gap-4">
+        <div className="rounded-[10px] border border-border bg-background px-4.5 py-3.5">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-ink-muted">Total faturado</div>
+          <div className="mt-1 text-xl font-extrabold text-ink-strong">{formatCents(totalBilled)}</div>
+        </div>
+        <div className="rounded-[10px] border border-border bg-background px-4.5 py-3.5">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-ink-muted">Em aberto</div>
+          <div className="mt-1 text-xl font-extrabold" style={{ color: "#D97706" }}>
+            {formatCents(totalDue)}
+          </div>
+        </div>
+      </div>
 
-      <NewPaymentForm patients={patientRows} />
+      <PaymentsPageClient payments={rows} patients={patientRows} openIntent={openIntent} />
 
-      <table className="w-full text-sm text-left">
-        <thead>
-          <tr className="border-b border-black/10 text-black/60">
-            <th className="py-2 pr-4 font-medium">Paciente</th>
-            <th className="py-2 pr-4 font-medium">Valor</th>
-            <th className="py-2 pr-4 font-medium">Método</th>
-            <th className="py-2 pr-4 font-medium">Status</th>
-            <th className="py-2 pr-4 font-medium"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {paymentRows.map((payment) => (
-            <tr key={payment.id} className="border-b border-black/5">
-              <td className="py-2 pr-4">{payment.patient.name}</td>
-              <td className="py-2 pr-4">{formatCents(payment.amountCents)}</td>
-              <td className="py-2 pr-4">{METHOD_LABELS[payment.method]}</td>
-              <td className="py-2 pr-4">{STATUS_LABELS[payment.status]}</td>
-              <td className="py-2 pr-4">
-                {payment.status === "pending" && (
-                  <form action={markPaymentPaidAction}>
-                    <input type="hidden" name="paymentId" value={payment.id} />
-                    <button type="submit" className="text-sm underline">
-                      Marcar como pago
-                    </button>
-                  </form>
-                )}
-              </td>
-            </tr>
-          ))}
-          {paymentRows.length === 0 && (
-            <tr>
-              <td colSpan={5} className="py-4 text-black/60">
-                Nenhum pagamento registrado ainda.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      <div>
-        <h2 className="text-sm font-semibold mb-2">Comprovantes recebidos</h2>
-        <p className="text-sm text-black/60 mb-3 max-w-2xl">
-          Enviados pelos pacientes no WhatsApp após pedirem a chave Pix. Um comprovante nunca
-          marca um pagamento como pago sozinho — confirme aqui, e depois use &quot;Marcar como
-          pago&quot; na tabela acima.
+      <div className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-ink-strong">Comprovantes recebidos</h2>
+        <p className="max-w-2xl text-sm text-ink-faint">
+          Enviados pelos pacientes no WhatsApp após pedirem a chave Pix. Um comprovante nunca marca um pagamento como
+          pago sozinho — confirme aqui, e depois use &quot;Marcar pago&quot; na tabela acima.
         </p>
         <div className="flex flex-col gap-4">
           {receiptRows.map((receipt) => {
-            const pendingForPatient = paymentRows.filter(
-              (payment) => payment.patient.id === receipt.patientId && payment.status === "pending",
-            );
+            const pendingForPatient = rows.filter((p) => p.patientId === receipt.patientId && p.status === "pending");
             return (
-              <div key={receipt.id} className="flex gap-4 border border-black/10 rounded p-4 items-start">
+              <div key={receipt.id} className="flex items-start gap-4 rounded-[10px] border border-border bg-background p-4">
                 {receipt.mimeType.startsWith("image/") ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- dynamic data: URI, next/image's optimizer doesn't apply
                   <img
                     src={`data:${receipt.mimeType};base64,${receipt.imageData.toString("base64")}`}
                     alt="Comprovante"
-                    className="w-32 h-32 object-cover rounded border border-black/10"
+                    className="h-32 w-32 rounded-lg border border-border object-cover"
                   />
                 ) : (
                   <a
                     href={`data:${receipt.mimeType};base64,${receipt.imageData.toString("base64")}`}
                     download
-                    className="w-32 h-32 flex items-center justify-center text-sm underline border border-black/10 rounded"
+                    className="flex h-32 w-32 items-center justify-center rounded-lg border border-border text-sm underline"
                   >
                     Abrir arquivo
                   </a>
@@ -124,20 +118,16 @@ export default async function PaymentsPage() {
 
                 <div className="flex flex-col gap-1 text-sm">
                   <div>
-                    <span className="font-medium">{receipt.patient.name}</span>{" "}
-                    <span className="text-black/60">
-                      · {new Date(receipt.createdAt).toLocaleString("pt-BR")}
-                    </span>
+                    <span className="font-semibold text-ink">{receipt.patient.name}</span>{" "}
+                    <span className="text-ink-faint">· {new Date(receipt.createdAt).toLocaleString("pt-BR")}</span>
                   </div>
 
                   {receipt.payment ? (
-                    <div className="text-black/60">
-                      Vinculado a {formatCents(receipt.payment.amountCents)} ({STATUS_LABELS[receipt.payment.status]})
-                    </div>
+                    <div className="text-ink-faint">Vinculado a {formatCents(receipt.payment.amountCents)}</div>
                   ) : pendingForPatient.length > 0 ? (
                     <form action={linkReceiptToPaymentAction} className="flex items-center gap-2">
                       <input type="hidden" name="receiptId" value={receipt.id} />
-                      <select name="paymentId" required className="rounded border border-black/15 px-2 py-1 text-sm">
+                      <select name="paymentId" required className="rounded-lg border border-border px-2 py-1 text-sm">
                         <option value="">Vincular a...</option>
                         {pendingForPatient.map((payment) => (
                           <option key={payment.id} value={payment.id}>
@@ -145,22 +135,18 @@ export default async function PaymentsPage() {
                           </option>
                         ))}
                       </select>
-                      <button type="submit" className="text-sm underline">
+                      <button type="submit" className="text-sm font-semibold text-accent-teal underline">
                         Vincular
                       </button>
                     </form>
                   ) : (
-                    <div className="text-black/60">
-                      Nenhum pagamento pendente deste paciente para vincular.
-                    </div>
+                    <div className="text-ink-faint">Nenhum pagamento pendente deste paciente para vincular.</div>
                   )}
                 </div>
               </div>
             );
           })}
-          {receiptRows.length === 0 && (
-            <p className="text-sm text-black/60">Nenhum comprovante recebido ainda.</p>
-          )}
+          {receiptRows.length === 0 && <p className="text-sm text-ink-muted">Nenhum comprovante recebido ainda.</p>}
         </div>
       </div>
     </div>

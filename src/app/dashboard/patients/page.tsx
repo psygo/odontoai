@@ -1,54 +1,44 @@
-import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { patients } from "@/db/schema";
-import { NewPatientForm } from "./new-patient-form";
+import { appointments, patients } from "@/db/schema";
+import { PatientsPageClient, type PatientRow } from "./patients-page-client";
 
 export default async function PatientsPage() {
   const session = await auth();
   const clinicId = session!.user.clinicId;
 
-  const rows = await db.query.patients.findMany({
-    where: eq(patients.clinicId, clinicId),
-    orderBy: (p, { asc }) => [asc(p.name)],
+  const [patientRows, appointmentRows] = await Promise.all([
+    db.query.patients.findMany({ where: eq(patients.clinicId, clinicId), orderBy: (p, { asc }) => [asc(p.name)] }),
+    db.query.appointments.findMany({
+      where: eq(appointments.clinicId, clinicId),
+      columns: { patientId: true, startsAt: true },
+    }),
+  ]);
+
+  const visitsByPatient = new Map<string, Date[]>();
+  for (const appointment of appointmentRows) {
+    const list = visitsByPatient.get(appointment.patientId) ?? [];
+    list.push(appointment.startsAt);
+    visitsByPatient.set(appointment.patientId, list);
+  }
+
+  const rows: PatientRow[] = patientRows.map((p) => {
+    const visits = visitsByPatient.get(p.id) ?? [];
+    const lastVisit = visits.length ? visits.reduce((a, b) => (a > b ? a : b)) : null;
+    return {
+      id: p.id,
+      name: p.name,
+      phone: p.phone,
+      visitCount: visits.length,
+      lastVisitLabel: lastVisit ? lastVisit.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—",
+    };
   });
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">Pacientes</h1>
-
-      <NewPatientForm />
-
-      <table className="w-full text-sm text-left">
-        <thead>
-          <tr className="border-b border-black/10 text-black/60">
-            <th className="py-2 pr-4 font-medium">Nome</th>
-            <th className="py-2 pr-4 font-medium">Telefone</th>
-            <th className="py-2 pr-4 font-medium">E-mail</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((patient) => (
-            <tr key={patient.id} className="border-b border-black/5">
-              <td className="py-2 pr-4">
-                <Link href={`/dashboard/patients/${patient.id}`} className="underline">
-                  {patient.name}
-                </Link>
-              </td>
-              <td className="py-2 pr-4">{patient.phone}</td>
-              <td className="py-2 pr-4">{patient.email ?? "—"}</td>
-            </tr>
-          ))}
-          {rows.length === 0 && (
-            <tr>
-              <td colSpan={3} className="py-4 text-black/60">
-                Nenhum paciente cadastrado ainda.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      <h1 className="text-xl font-semibold text-ink-strong">Pacientes</h1>
+      <PatientsPageClient patients={rows} />
     </div>
   );
 }

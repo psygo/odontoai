@@ -15,7 +15,7 @@ export function EditDentistForm({ dentist }: { dentist: DentistData }) {
   const [errorMessage, formAction, isPending] = useActionState(updateDentistAction, undefined);
 
   return (
-    <form action={formAction} className="flex flex-wrap gap-3 items-end border border-black/10 rounded p-4">
+    <form action={formAction} className="flex flex-wrap gap-3 items-end border border-border rounded p-4">
       <input type="hidden" name="dentistId" value={dentist.id} />
 
       <div className="flex flex-col gap-1">
@@ -28,7 +28,7 @@ export function EditDentistForm({ dentist }: { dentist: DentistData }) {
           type="text"
           defaultValue={dentist.name}
           required
-          className="rounded border border-black/15 px-3 py-2 text-sm"
+          className="rounded border border-border px-3 py-2 text-sm"
         />
       </div>
 
@@ -42,7 +42,7 @@ export function EditDentistForm({ dentist }: { dentist: DentistData }) {
           type="email"
           defaultValue={dentist.email}
           required
-          className="rounded border border-black/15 px-3 py-2 text-sm"
+          className="rounded border border-border px-3 py-2 text-sm"
         />
       </div>
 
@@ -56,7 +56,7 @@ export function EditDentistForm({ dentist }: { dentist: DentistData }) {
           type="text"
           defaultValue={dentist.croNumber}
           required
-          className="rounded border border-black/15 px-3 py-2 text-sm w-24"
+          className="rounded border border-border px-3 py-2 text-sm w-24"
         />
       </div>
 
@@ -71,14 +71,14 @@ export function EditDentistForm({ dentist }: { dentist: DentistData }) {
           defaultValue={dentist.croState}
           required
           maxLength={2}
-          className="rounded border border-black/15 px-3 py-2 text-sm w-16 uppercase"
+          className="rounded border border-border px-3 py-2 text-sm w-16 uppercase"
         />
       </div>
 
       <button
         type="submit"
         disabled={isPending}
-        className="rounded bg-foreground text-background px-3 py-2 text-sm font-medium disabled:opacity-60"
+        className="rounded bg-accent-blue text-white px-3 py-2 text-sm font-medium disabled:opacity-60"
       >
         {isPending ? "Salvando..." : "Salvar alterações"}
       </button>

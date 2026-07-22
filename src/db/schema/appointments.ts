@@ -25,6 +25,10 @@ export const appointments = pgTable("appointments", {
   status: appointmentStatus("status").notNull().default("scheduled"),
   startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
   endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  // Free text, not an enum — nullable since older rows predate this field.
+  // Drives the price lookup in src/lib/services.ts for generating a billing
+  // entry from a completed appointment.
+  service: text("service"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -20,7 +20,7 @@ export default async function DentistDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">{dentist.name}</h1>
+      <h1 className="text-xl font-semibold text-ink-strong">{dentist.name}</h1>
       <EditDentistForm dentist={dentist} />
     </div>
   );

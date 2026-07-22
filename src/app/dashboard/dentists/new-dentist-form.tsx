@@ -14,7 +14,7 @@ export function NewDentistForm() {
         await formAction(formData);
         formRef.current?.reset();
       }}
-      className="flex flex-wrap gap-3 items-end border border-black/10 rounded p-4"
+      className="flex flex-wrap gap-3 items-end border border-border rounded p-4"
     >
       <div className="flex flex-col gap-1">
         <label htmlFor="name" className="text-sm">
@@ -25,7 +25,7 @@ export function NewDentistForm() {
           name="name"
           type="text"
           required
-          className="rounded border border-black/15 px-3 py-2 text-sm"
+          className="rounded border border-border px-3 py-2 text-sm"
         />
       </div>
 
@@ -38,7 +38,7 @@ export function NewDentistForm() {
           name="email"
           type="email"
           required
-          className="rounded border border-black/15 px-3 py-2 text-sm"
+          className="rounded border border-border px-3 py-2 text-sm"
         />
       </div>
 
@@ -51,7 +51,7 @@ export function NewDentistForm() {
           name="croNumber"
           type="text"
           required
-          className="rounded border border-black/15 px-3 py-2 text-sm w-24"
+          className="rounded border border-border px-3 py-2 text-sm w-24"
         />
       </div>
 
@@ -65,14 +65,14 @@ export function NewDentistForm() {
           type="text"
           required
           maxLength={2}
-          className="rounded border border-black/15 px-3 py-2 text-sm w-16 uppercase"
+          className="rounded border border-border px-3 py-2 text-sm w-16 uppercase"
         />
       </div>
 
       <button
         type="submit"
         disabled={isPending}
-        className="rounded bg-foreground text-background px-3 py-2 text-sm font-medium disabled:opacity-60"
+        className="rounded bg-accent-blue text-white px-3 py-2 text-sm font-medium disabled:opacity-60"
       >
         {isPending ? "Adicionando..." : "Adicionar dentista"}
       </button>

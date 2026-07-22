@@ -78,45 +78,119 @@ be reintroduced deliberately rather than by adding `dark:` classes ad hoc.
 
 ## Dashboard
 
-All four dashboard sections are wired to real data (no more placeholders):
+The dashboard was ported to a proper design system (navy icon rail, top bar
+with search, accent colors per section, modal-based create/edit flows)
+adapted from an external design reference. Every section is wired to real
+data — no placeholders.
 
-- [src/app/dashboard/dentists/](src/app/dashboard/dentists/) — list + add
-  form. Required before appointments can be booked, since
-  `appointments.dentistId` is `NOT NULL`; sign-up doesn't create one
-  automatically. `[id]/page.tsx` is an edit page (name/email/CRO).
-- [src/app/dashboard/patients/](src/app/dashboard/patients/) — list + add
-  form; `[id]/page.tsx` is both the edit form (name/phone/CPF/birth
-  date/email/notes) and shows the patient's appointment and payment history
-  (via the relations above).
-- [src/app/dashboard/calendar/](src/app/dashboard/calendar/) — a
-  [FullCalendar](src/app/dashboard/calendar/full-calendar-view.tsx) week/
-  month/day grid (client component, `timeZone: "America/Sao_Paulo"`,
-  color-coded by appointment status, click an event to jump to that
-  patient's page), a create form with the same dentist-double-booking
-  conflict check used by the WhatsApp agent's `book_appointment` tool, and a
-  plain table below the calendar for changing an appointment's status (the
-  calendar itself is read/navigate-only for now).
-  - **FullCalendar version pin**: `@fullcalendar/react` is on a newer major
-    (7.x) than the plugin packages (`daygrid`/`timegrid`/`interaction`,
-    still 6.1.21 stable — 7.x for those is RC-only). Installing without
-    exact versions pulls two different `@fullcalendar/core` instances into
-    the tree and breaks at runtime ("invalid plugin"). All five packages
-    are pinned to `6.1.21` in `package.json` — don't `npm update` this
-    group without re-checking that the plugin packages have a matching
-    stable major.
-  - **Timezone note**: `datetime-local` inputs carry no timezone, and the
-    server action runs server-side (often UTC in production), not in the
-    browser's zone. [actions.ts](src/app/dashboard/calendar/actions.ts) pins
-    the input to `-03:00` (Brazil has used one offset nationwide since
-    abolishing DST in 2019) rather than trust ambiguous local parsing. This
-    would need revisiting for clinics outside that offset (e.g. Acre).
-- [src/app/dashboard/payments/](src/app/dashboard/payments/) — list + add
-  form (amount entered in reais, stored as `amountCents`) + a "mark as paid"
-  action. No real Pix/boleto/NF-e generation yet — that's Phase 4.
+- **Shell** ([layout.tsx](src/app/dashboard/layout.tsx),
+  [_components/](src/app/dashboard/_components/)): a 76px navy icon rail
+  (Início/Agenda/Consultas/Faturas/Pacientes/Receitas) plus a bottom avatar
+  button that opens Equipe/Configurações/Sair — the design reference only
+  had 6 rail icons and no equivalent for staff/settings management, so
+  those were tucked behind the avatar rather than added to the rail.
+  `SearchProvider` shares the top bar's search text with whichever list
+  page is active via React Context (client-mounted from the server
+  `layout.tsx`, wrapping `{children}`); only the Appointments and Billing
+  lists consume it, matching the reference.
+- **Calendar** ([src/app/dashboard/calendar/](src/app/dashboard/calendar/))
+  — a hand-built day-view grid (`day-grid.tsx`, one column per dentist,
+  30-min slots, absolute-positioned appointment blocks), **not**
+  FullCalendar. FullCalendar's multi-column "resource" view (needed to put
+  one column per provider) requires a paid Premium license for commercial
+  use, which a hand-rolled grid avoids entirely — the
+  `@fullcalendar/*` packages were removed from the project.
+  - `grid-math.ts` centralizes all the timezone-sensitive math
+    (`America/Sao_Paulo`, computed server-side in `page.tsx`); the client
+    grid component only ever does plain arithmetic on numbers it's handed,
+    keeping timezone logic in one place.
+  - Day navigation is plain `<Link href="?date=...">`s handled by the
+    server component — no client-side date-fetching logic.
+  - **TypeScript narrowing gotcha**: `if (a.type === "x" || a.type === "y")`
+    did not narrow a discriminated union back to the third variant in the
+    `else` branch, because one variant's discriminant field is itself a
+    2-literal union. Checking the single-literal branch instead
+    (`if (a.type !== "z")`) narrowed correctly. (Originally hit in the
+    WhatsApp webhook's message-type union, documented in Phase 4 above,
+    but the same shape recurs anywhere a variant's discriminant isn't a
+    single literal.)
+- **Appointment modal**
+  ([calendar/appointment-modal.tsx](src/app/dashboard/calendar/appointment-modal.tsx))
+  — one shared component (create/detail/edit) used by the calendar grid,
+  the new [Appointments list page](src/app/dashboard/appointments/), and
+  the top bar's "+ Nova Consulta" button. The global button doesn't open a
+  cross-page modal — it links to `/dashboard/calendar?new=1` (optionally
+  `&patientId=`), and only the Calendar page owns the modal instance. This
+  was a deliberate simplification over a layout-level modal provider: it
+  avoids duplicating the patients/dentists reference-data fetch at the
+  layout level and a wider `revalidatePath` blast radius, at the cost of
+  the button navigating to Calendar instead of overlaying in place when
+  clicked from another page.
+  - **Real bug caught during manual verification**: the "did the `?new=1`
+    flag change" logic used a `useState(currentValue)` initializer to
+    track the previous value, which meant the very first render always
+    looked like "no change" — the modal never opened on a fresh page load
+    via that link, only on a second, different navigation. Fixed by
+    initializing the tracked "previous" value to `null` instead of the
+    current value, so a flag present on the very first render still counts
+    as a change. Same fix applied to the equivalent logic in the
+    Prescriptions page's `?new=1` handling. (The Billing page's version of
+    this was written correctly from the start, initializing to `null`.)
+  - Every `useEffect` that needed to reset local state when a prop changed
+    (which modal/dentist/tab-mode to show) was written using React's
+    "adjust state during render" pattern (compare against a `prevX` state
+    variable, call the setters directly in the render body) instead of
+    `useEffect` + `setState`, per this project's `eslint-plugin-react-hooks`
+    config, which errors on synchronous `setState` calls inside an effect
+    body.
+  - Native `<dialog>` + `showModal()`/`.close()` is used for every modal in
+    this app (no modal library) — click-outside-to-close relies on
+    checking `event.target === dialogRef.current` in the dialog's own
+    `onClick`. **Gotcha**: Tailwind's preflight reset zeroes out the
+    `margin: auto` a `dialog:modal` normally gets from the UA stylesheet,
+    which otherwise centers it — without an explicit `m-auto` class the
+    dialog renders pinned to the top-left corner instead of centered. This
+    was caught via a screenshot during manual verification, not by any
+    automated check.
+- **Appointments** ([src/app/dashboard/appointments/](src/app/dashboard/appointments/))
+  — new list page (status tabs, search, click a row for the same detail
+  modal used on Calendar). Previously this was just a table embedded on the
+  Calendar page.
+- [src/app/dashboard/payments/](src/app/dashboard/payments/) — modal-based
+  create/edit (single amount + method + status, matching the existing
+  schema — no itemized line items or insurance-covered field, a deliberate
+  scope decision to stay consistent with this session's earlier
+  Pix-only-for-now scoping). The Pix-receipt reconciliation section from
+  Phase 4 is unchanged, just restyled.
+- [src/app/dashboard/patients/](src/app/dashboard/patients/) — list with
+  avatar initials/visit count/last visit; profile page has a header card
+  and a 3-column grid (appointments/billing/prescriptions). Billing History
+  items are clickable (opens the same payment edit modal); Appointment
+  History and Prescriptions are read-only lists linking to their full
+  pages, to avoid duplicating the calendar's dentist-list fetch and the
+  prescription-signing safeguards onto the profile page for marginal
+  benefit.
+- [src/app/dashboard/prescriptions/](src/app/dashboard/prescriptions/) —
+  modal-based create/edit, but a **signed** prescription opens read-only
+  (no save button) instead of an editable form — both client-side (the
+  modal checks `status === "signed"`) and server-side (`savePrescriptionAction`
+  only updates rows still in `status = "draft"`), preserving the Phase 3
+  sign-once-immutable guarantee through the redesign.
+- **New field**: `appointments.service` (nullable text) plus a small fixed
+  price catalog in [src/lib/services.ts](src/lib/services.ts) — needed for
+  the "generate a payment from a completed appointment" flow (the
+  appointment detail modal's "Gerar cobrança" button, which pre-fills the
+  amount from the service's price).
 - Every query and mutation is scoped by `session.user.clinicId` from
   Auth.js, both on reads (`where eq(x.clinicId, clinicId)`) and on writes
   (looked up server-side, never trusted from form input) — this is the
   multi-tenancy boundary, so don't bypass it when adding new pages.
+- **Verified**: full `tsc`/`lint`/`build` pass, plus a manual pass with a
+  temporary QA clinic/user/data — signed in via a headless browser
+  (Playwright) and screenshotted every page and the create/detail modals,
+  catching the two real bugs described above before they'd have been
+  hit by an actual user. QA data was cleaned up afterward (cascade-deleted
+  via the QA clinic row).
 
 ## Phase 2 — WhatsApp AI agent
 

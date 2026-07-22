@@ -6,13 +6,18 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { dentists, patients, prescriptions } from "@/db/schema";
 
-export async function createPrescriptionAction(_prevState: string | undefined, formData: FormData) {
+// Handles both create and edit — a single modal/form posts here, with an
+// empty `prescriptionId` meaning "create a new one". Editing is only ever
+// allowed while status is still "draft" — enforced server-side here too
+// (not just hidden client-side), since signing is meant to be final.
+export async function savePrescriptionAction(_prevState: string | undefined, formData: FormData) {
   const session = await auth();
   if (!session?.user?.clinicId) {
     return "Sessão inválida. Faça login novamente.";
   }
   const clinicId = session.user.clinicId;
 
+  const prescriptionIdRaw = formData.get("prescriptionId");
   const patientId = formData.get("patientId");
   const dentistId = formData.get("dentistId");
   const content = formData.get("content");
@@ -36,12 +41,20 @@ export async function createPrescriptionAction(_prevState: string | undefined, f
     return "Paciente ou dentista inválido.";
   }
 
-  await db.insert(prescriptions).values({
-    clinicId,
-    patientId,
-    dentistId,
-    content: content.trim(),
-  });
+  const prescriptionId = typeof prescriptionIdRaw === "string" && prescriptionIdRaw ? prescriptionIdRaw : null;
+
+  if (prescriptionId) {
+    const updated = await db
+      .update(prescriptions)
+      .set({ patientId, dentistId, content: content.trim() })
+      .where(and(eq(prescriptions.id, prescriptionId), eq(prescriptions.clinicId, clinicId), eq(prescriptions.status, "draft")))
+      .returning({ id: prescriptions.id });
+    if (updated.length === 0) {
+      return "Essa receita já foi assinada e não pode mais ser editada.";
+    }
+  } else {
+    await db.insert(prescriptions).values({ clinicId, patientId, dentistId, content: content.trim() });
+  }
 
   revalidatePath("/dashboard/prescriptions");
   revalidatePath(`/dashboard/patients/${patientId}`);
