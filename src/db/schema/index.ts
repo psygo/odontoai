@@ -3,6 +3,7 @@ export * from "./dentists";
 export * from "./patients";
 export * from "./appointments";
 export * from "./payments";
+export * from "./payment-receipts";
 export * from "./prescriptions";
 export * from "./users";
 export * from "./conversations";

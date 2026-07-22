@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { conversations, messages } from "@/db/schema";
+import { isUniqueViolation } from "@/lib/db-errors";
 import { createPatientTools } from "./tools";
 
 const client = new Anthropic();
@@ -24,6 +25,11 @@ function buildSystemPrompt(clinicName: string, todayLabel: string): string {
   conteúdo de uma receita você mesma — o texto é enviado pela ferramenta, não por você. Se não
   houver nenhuma receita assinada, diga que ainda não está pronta e será enviada assim que o
   dentista assinar.
+- Se o paciente perguntar como pagar ou pedir a chave Pix, use share_pix_key. Nunca digite a
+  chave Pix você mesma, nem de memória nem inventada — é a ferramenta que envia o valor exato.
+  Se o paciente mandar uma foto/PDF de comprovante, isso já é processado automaticamente (fora
+  dessa conversa com você); se ele perguntar depois se chegou, você verá no histórico se um
+  comprovante foi recebido — pode confirmar normalmente, sem chamar nenhuma ferramenta.
 
 ## O que você NUNCA faz
 - Nunca dê conselhos médicos, diagnósticos, ou fale sobre dosagem de remédios.
@@ -50,6 +56,12 @@ Você: isso é um documento já assinado pelo dentista, não uma pergunta sobre 
 list_prescriptions; se só tiver uma, chama send_prescription direto e responde "Prontinho, te
 mandei aqui em cima 🙂"; se não houver nenhuma assinada, responde "Ainda não tá assinada — assim
 que o dentista assinar eu te mando."
+
+Paciente: "como faço pra pagar?"
+Você: chama share_pix_key (nunca digita a chave você mesma) e responde "Te mandei a chave Pix
+aqui em cima 🙂
+
+Depois só me manda o comprovante que já fica registrado por aqui."
 
 Paciente: "quero marcar uma consulta"
 Você: usa list_dentists e check_availability antes de sugerir horários, e só chama book_appointment depois que o paciente confirmar um horário específico.
@@ -85,18 +97,6 @@ interface RespondParams {
   // out of band from the model's own text reply.
   phoneNumberId: string;
   patientWaId: string;
-}
-
-function hasPgCode(error: unknown, code: string): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  if ("code" in error && error.code === code) return true;
-  return "cause" in error && hasPgCode(error.cause, code);
-}
-
-// Postgres unique_violation. Drizzle wraps the underlying pg error in a
-// DrizzleQueryError, so the code lives on `error.cause`, not the error itself.
-function isUniqueViolation(error: unknown): boolean {
-  return hasPgCode(error, "23505");
 }
 
 // Returns null if `waMessageId` was already processed (Meta redelivered a

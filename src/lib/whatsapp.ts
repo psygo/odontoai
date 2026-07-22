@@ -71,7 +71,7 @@ export function verifyWhatsAppSignature(rawBody: string, signatureHeader: string
   return timingSafeEqual(expectedBuffer, providedBuffer);
 }
 
-export interface InboundWhatsAppMessage {
+interface InboundCommon {
   phoneNumberId: string;
   from: string;
   // Canonical WhatsApp ID to send replies to. For most countries this equals
@@ -79,12 +79,27 @@ export interface InboundWhatsAppMessage {
   // to the extra mobile "9" digit — sending to `from` is silently accepted by
   // the Graph API but never delivered. Always reply to `waId`, not `from`.
   waId: string;
-  text: string;
   waMessageId: string;
 }
 
-// Parses the Meta webhook payload shape and returns only text messages;
-// other change/message types (status updates, media, etc.) return null.
+export interface InboundTextMessage extends InboundCommon {
+  type: "text";
+  text: string;
+}
+
+// A photo or PDF sent as a payment receipt. `mediaId` must be exchanged for
+// actual bytes via downloadWhatsAppMedia — Meta never puts the file in the
+// webhook payload itself.
+export interface InboundMediaMessage extends InboundCommon {
+  type: "image" | "document";
+  mediaId: string;
+  mimeType: string;
+}
+
+export type InboundWhatsAppMessage = InboundTextMessage | InboundMediaMessage;
+
+// Parses the Meta webhook payload shape and returns text or image/document
+// messages; other types (status updates, audio, stickers, etc.) return null.
 export function parseInboundWhatsAppMessage(payload: unknown): InboundWhatsAppMessage | null {
   const entry = (payload as { entry?: unknown[] })?.entry?.[0] as
     | { changes?: unknown[] }
@@ -94,22 +109,72 @@ export function parseInboundWhatsAppMessage(payload: unknown): InboundWhatsAppMe
     | {
         metadata?: { phone_number_id?: string };
         contacts?: { wa_id?: string }[];
-        messages?: { id?: string; from?: string; type?: string; text?: { body?: string } }[];
+        messages?: {
+          id?: string;
+          from?: string;
+          type?: string;
+          text?: { body?: string };
+          image?: { id?: string; mime_type?: string };
+          document?: { id?: string; mime_type?: string };
+        }[];
       }
     | undefined;
 
   const message = value?.messages?.[0];
   const phoneNumberId = value?.metadata?.phone_number_id;
 
-  if (!message || !phoneNumberId || message.type !== "text" || !message.text?.body || !message.from || !message.id) {
+  if (!message || !phoneNumberId || !message.from || !message.id) {
     return null;
   }
 
-  return {
+  const common: InboundCommon = {
     phoneNumberId,
     from: message.from,
     waId: value?.contacts?.[0]?.wa_id ?? message.from,
-    text: message.text.body,
     waMessageId: message.id,
   };
+
+  if (message.type === "text" && message.text?.body) {
+    return { ...common, type: "text", text: message.text.body };
+  }
+  if (message.type === "image" && message.image?.id) {
+    return { ...common, type: "image", mediaId: message.image.id, mimeType: message.image.mime_type ?? "image/jpeg" };
+  }
+  if (message.type === "document" && message.document?.id) {
+    return {
+      ...common,
+      type: "document",
+      mediaId: message.document.id,
+      mimeType: message.document.mime_type ?? "application/pdf",
+    };
+  }
+
+  return null;
+}
+
+// Meta never inlines media bytes in the webhook payload — this is the
+// documented two-step Graph API exchange: first resolve the media id to a
+// short-lived download URL, then fetch that URL (both calls need the same
+// bearer token).
+export async function downloadWhatsAppMedia(mediaId: string): Promise<{ data: Buffer; mimeType: string }> {
+  const accessToken = requireEnv("WHATSAPP_ACCESS_TOKEN");
+
+  const metaRes = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!metaRes.ok) {
+    throw new Error(`WhatsApp media lookup failed (${metaRes.status}): ${await metaRes.text()}`);
+  }
+  const meta = (await metaRes.json()) as { url?: string; mime_type?: string };
+  if (!meta.url) {
+    throw new Error("WhatsApp media lookup response had no url");
+  }
+
+  const fileRes = await fetch(meta.url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!fileRes.ok) {
+    throw new Error(`WhatsApp media download failed (${fileRes.status})`);
+  }
+
+  const data = Buffer.from(await fileRes.arrayBuffer());
+  return { data, mimeType: meta.mime_type ?? "application/octet-stream" };
 }

@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { paymentMethod, payments, patients } from "@/db/schema";
+import { paymentMethod, paymentReceipts, payments, patients } from "@/db/schema";
 
 export async function createPaymentAction(_prevState: string | undefined, formData: FormData) {
   const session = await auth();
@@ -65,6 +65,32 @@ export async function markPaymentPaidAction(formData: FormData) {
     .update(payments)
     .set({ status: "paid", paidAt: new Date() })
     .where(and(eq(payments.id, paymentId), eq(payments.clinicId, session.user.clinicId)));
+
+  revalidatePath("/dashboard/payments");
+}
+
+// Links a receipt the WhatsApp agent couldn't unambiguously match on arrival
+// (patient had zero or multiple pending payments) to the specific payment a
+// staff member identifies by hand. This never marks the payment as paid by
+// itself — staff still confirms that separately via markPaymentPaidAction.
+export async function linkReceiptToPaymentAction(formData: FormData) {
+  const session = await auth();
+  if (!session?.user?.clinicId) return;
+  const clinicId = session.user.clinicId;
+
+  const receiptId = formData.get("receiptId");
+  const paymentId = formData.get("paymentId");
+  if (typeof receiptId !== "string" || !receiptId || typeof paymentId !== "string" || !paymentId) return;
+
+  const payment = await db.query.payments.findFirst({
+    where: and(eq(payments.id, paymentId), eq(payments.clinicId, clinicId)),
+  });
+  if (!payment) return;
+
+  await db
+    .update(paymentReceipts)
+    .set({ paymentId, appointmentId: payment.appointmentId })
+    .where(and(eq(paymentReceipts.id, receiptId), eq(paymentReceipts.clinicId, clinicId)));
 
   revalidatePath("/dashboard/payments");
 }

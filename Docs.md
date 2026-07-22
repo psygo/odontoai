@@ -320,6 +320,73 @@ the patient on request, verbatim.
   text (like a prescription) can only be sent in response to the patient
   messaging first, which is exactly the `send_prescription` flow above.
 
+## Phase 4 — Pix payments (MVP)
+
+Scoped down from full invoicing to just Pix, following the same
+"AI-forwards-a-value-it-never-generates" pattern used for prescriptions:
+the WhatsApp agent shares the clinic's Pix key on request and stores
+whatever receipt the patient sends back — it never marks a payment as paid
+by itself.
+
+- **Schema:**
+  - `clinics.pixKey` ([clinics.ts](src/db/schema/clinics.ts)) — set by staff
+    in the new [`/dashboard/settings`](src/app/dashboard/settings/) page.
+  - `payment_receipts` ([payment-receipts.ts](src/db/schema/payment-receipts.ts))
+    — stores the receipt image/PDF as `bytea` directly in Postgres (no
+    object storage configured in this project, so this was the zero-new-
+    infra option). References both `appointmentId` and `paymentId`
+    (both nullable) because a patient can have several appointments each
+    with their own payment(s), so a bare incoming photo can't always be
+    pinned to one payment automatically.
+- **`share_pix_key` tool** ([lib/ai/tools.ts](src/lib/ai/tools.ts)): same
+  verbatim-dispatch pattern as `send_prescription` — the model never types
+  the Pix key itself, since a single hallucinated or transposed character
+  in a financial routing value would misdirect a real payment. It only
+  learns whether the send succeeded.
+- **Receiving the receipt** ([lib/whatsapp.ts](src/lib/whatsapp.ts),
+  [lib/receipts.ts](src/lib/receipts.ts)): this is the first inbound
+  non-text message type the webhook handles.
+  - `parseInboundWhatsAppMessage` now returns a discriminated union
+    (`type: "text" | "image" | "document"`) instead of always assuming
+    text. **TS narrowing gotcha hit here:** `if (inbound.type === "image" ||
+    inbound.type === "document")` did NOT narrow the `else` branch back to
+    `InboundTextMessage` (TS kept complaining `.text` didn't exist on the
+    union afterwards) — checking the single-literal branch instead,
+    `if (inbound.type !== "text")`, narrowed correctly. Root cause is that
+    one variant's discriminant is itself a 2-literal union (`"image" |
+    "document"`), which behaves differently from the textbook one-literal-
+    per-variant discriminated union.
+  - `downloadWhatsAppMedia()` does the documented two-step Graph API
+    exchange (resolve media id → short-lived URL, then fetch that URL,
+    both calls bearer-authed) — Meta never inlines media bytes in the
+    webhook payload itself.
+  - `receivePaymentReceipt()` matches to a payment only when the patient
+    has **exactly one** pending payment; otherwise the receipt is stored
+    unmatched for staff to reconcile by hand on the
+    [payments page](src/app/dashboard/payments/page.tsx) (thumbnail +
+    dropdown of that patient's pending payments). Storage, the
+    conversation log entries, and the conversation timestamp bump all
+    happen inside one `db.transaction()`, gated by a unique `waMessageId`
+    constraint — the same atomic-insert-as-dedup pattern used for text
+    messages, extended to a real DB transaction here since a receipt
+    write touches multiple tables at once.
+  - `isUniqueViolation`/`hasPgCode` were pulled out of `agent.ts` into a
+    shared [`lib/db-errors.ts`](src/lib/db-errors.ts) once a second module
+    needed the same Drizzle-wraps-the-real-pg-error-in-`.cause` logic.
+- **Verified against the real database:** the Pix key lookup, the
+  single-vs-multiple-pending-payment matching logic, bytea round-tripping
+  exact bytes, and that a simulated webhook redelivery (same
+  `waMessageId` twice) is rejected by the unique constraint without
+  creating a duplicate receipt row. The actual Meta media download and
+  WhatsApp send calls weren't live-tested (same reasoning as Phase 3 — no
+  real media id/test recipient to safely exercise against the live Graph
+  API).
+- **Known limitations:** no OCR/vision reading of the receipt to
+  auto-verify the amount — staff visually confirm before marking a
+  payment paid; matching beyond the "exactly one pending payment" case is
+  entirely manual; NF-e/NFS-e invoice emission and boleto/card collection
+  are still unscoped (see below).
+
 ## Roadmap
 
 1. **Phase 1 (done)** — dentist dashboard: calendar, patients, payments,
@@ -337,8 +404,9 @@ the patient on request, verbatim.
    real Graph API with test data. Still open: no e-signature (see
    limitation above), no notification to the dentist when a patient asks
    for a prescription that isn't signed yet.
-4. **Phase 4** — invoicing/payment automation: NF-e/NFS-e via a provider
-   (Focus NFe, eNotas) and Pix/boleto/card collection (Asaas, Pagar.me)
+4. **Phase 4 (Pix MVP done)** — Pix key sharing + receipt collection via
+   WhatsApp, described above. NF-e/NFS-e emission (Focus NFe, eNotas) and
+   boleto/card collection (Asaas, Pagar.me) remain unscoped follow-ups.
 
 **Compliance:** patient health data is "dado sensível" under LGPD — explicit
 consent, encryption at rest, and an access audit trail are required, not

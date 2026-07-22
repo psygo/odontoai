@@ -2,7 +2,7 @@ import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { and, eq, gte, lte, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { appointments, conversations, dentists, prescriptions } from "@/db/schema";
+import { appointments, clinics, conversations, dentists, prescriptions } from "@/db/schema";
 import { sendWhatsAppReply } from "@/lib/whatsapp";
 
 interface WhatsAppContext {
@@ -197,6 +197,35 @@ export function createPatientTools(
     },
   });
 
+  // The key is sent directly here, never through the model's own generated
+  // text — a Pix key is a financial routing value, and a single hallucinated
+  // or transposed character would misdirect a real payment. The model only
+  // learns whether the send succeeded, never the key itself.
+  const sharePixKey = betaZodTool({
+    name: "share_pix_key",
+    description:
+      "Send the clinic's Pix key directly to the patient on WhatsApp, so they can pay. Use when the patient asks how to pay or asks for the Pix key/QR.",
+    inputSchema: z.object({}),
+    run: async () => {
+      const clinic = await db.query.clinics.findFirst({
+        where: eq(clinics.id, clinicId),
+        columns: { pixKey: true },
+      });
+      if (!clinic?.pixKey) {
+        return JSON.stringify({ ok: false, error: "This clinic has no Pix key configured yet." });
+      }
+
+      try {
+        await sendWhatsAppReply(whatsapp.phoneNumberId, whatsapp.patientWaId, clinic.pixKey);
+      } catch (error) {
+        console.error("share_pix_key: WhatsApp dispatch failed:", error);
+        return JSON.stringify({ ok: false, error: "WhatsApp send failed, ask the patient to try again shortly." });
+      }
+
+      return JSON.stringify({ ok: true });
+    },
+  });
+
   return [
     listDentists,
     checkAvailability,
@@ -206,5 +235,6 @@ export function createPatientTools(
     escalateToHuman,
     listPrescriptions,
     sendPrescription,
+    sharePixKey,
   ];
 }

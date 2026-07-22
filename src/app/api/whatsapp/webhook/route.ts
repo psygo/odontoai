@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { clinics, conversations, messages, patients } from "@/db/schema";
 import { respondToPatientMessage } from "@/lib/ai/agent";
+import { receivePaymentReceipt } from "@/lib/receipts";
 import { parseInboundWhatsAppMessage, sendWhatsAppReply, verifyWhatsAppSignature } from "@/lib/whatsapp";
 
 // One LLM turn (plus tool calls) can take a while; give it room on serverless.
@@ -29,7 +30,8 @@ export async function POST(req: NextRequest) {
   const payload = JSON.parse(rawBody);
   const inbound = parseInboundWhatsAppMessage(payload);
 
-  // Non-text messages (delivery receipts, media, etc.) are acknowledged and ignored for now.
+  // Anything we don't handle (delivery receipts, status updates, audio,
+  // stickers, etc.) is acknowledged and ignored.
   if (!inbound) {
     return NextResponse.json({ status: "ignored" });
   }
@@ -83,6 +85,19 @@ export async function POST(req: NextRequest) {
       .insert(conversations)
       .values({ clinicId: clinic.id, patientId: patient.id })
       .returning();
+  }
+
+  if (inbound.type !== "text") {
+    await receivePaymentReceipt({
+      clinicId: clinic.id,
+      patientId: patient.id,
+      conversationId: conversation.id,
+      phoneNumberId: inbound.phoneNumberId,
+      patientWaId: inbound.waId,
+      mediaId: inbound.mediaId,
+      waMessageId: inbound.waMessageId,
+    });
+    return NextResponse.json({ status: "ok" });
   }
 
   const replyText = await respondToPatientMessage({
