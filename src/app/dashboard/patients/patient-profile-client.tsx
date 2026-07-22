@@ -60,6 +60,12 @@ export function PatientProfileClient({
             {patient.phone} · Paciente desde {patient.sinceLabel}
           </div>
         </div>
+        <Link
+          href={`/dashboard/conversations?patientId=${patient.id}`}
+          className="shrink-0 rounded-lg border border-border px-3 py-2 text-sm font-bold text-ink-soft"
+        >
+          Conversas
+        </Link>
         <button
           type="button"
           onClick={() => setEditModal({ mode: "edit", patient })}

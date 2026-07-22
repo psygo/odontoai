@@ -66,6 +66,14 @@ export function PatientsIcon(props: IconProps) {
   );
 }
 
+export function ChatIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M21 12a8 8 0 01-11.5 7.2L3 21l1.8-6.5A8 8 0 1121 12z" />
+    </Svg>
+  );
+}
+
 export function RxIcon(props: IconProps) {
   return (
     <Svg {...props}>

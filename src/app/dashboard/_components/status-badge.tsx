@@ -24,6 +24,12 @@ export const PRESCRIPTION_STATUS_STYLE: Record<string, StatusStyle> = {
   signed: { bg: "#EDE9FE", color: "#6D28D9", label: "Assinada" },
 };
 
+export const CONVERSATION_STATUS_STYLE: Record<string, StatusStyle> = {
+  active: { bg: "#D1FAE5", color: "#047857", label: "Ativa" },
+  escalated: { bg: "#FFE4E6", color: "#BE123C", label: "Escalada" },
+  closed: { bg: "#F1F5F9", color: "#475569", label: "Encerrada" },
+};
+
 export function StatusBadge({ bg, color, label }: StatusStyle) {
   return (
     <span

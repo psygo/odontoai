@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import { appointments } from "./appointments";
 import { clinics } from "./clinics";
+import { conversations, messages } from "./conversations";
 import { dentists } from "./dentists";
 import { paymentReceipts } from "./payment-receipts";
 import { patients } from "./patients";
@@ -14,6 +15,7 @@ export const clinicsRelations = relations(clinics, ({ many }) => ({
   payments: many(payments),
   prescriptions: many(prescriptions),
   paymentReceipts: many(paymentReceipts),
+  conversations: many(conversations),
 }));
 
 export const dentistsRelations = relations(dentists, ({ one, many }) => ({
@@ -28,6 +30,7 @@ export const patientsRelations = relations(patients, ({ one, many }) => ({
   payments: many(payments),
   prescriptions: many(prescriptions),
   paymentReceipts: many(paymentReceipts),
+  conversations: many(conversations),
 }));
 
 export const appointmentsRelations = relations(appointments, ({ one, many }) => ({
@@ -55,4 +58,14 @@ export const paymentReceiptsRelations = relations(paymentReceipts, ({ one }) => 
   patient: one(patients, { fields: [paymentReceipts.patientId], references: [patients.id] }),
   appointment: one(appointments, { fields: [paymentReceipts.appointmentId], references: [appointments.id] }),
   payment: one(payments, { fields: [paymentReceipts.paymentId], references: [payments.id] }),
+}));
+
+export const conversationsRelations = relations(conversations, ({ one, many }) => ({
+  clinic: one(clinics, { fields: [conversations.clinicId], references: [clinics.id] }),
+  patient: one(patients, { fields: [conversations.patientId], references: [patients.id] }),
+  messages: many(messages),
+}));
+
+export const messagesRelations = relations(messages, ({ one }) => ({
+  conversation: one(conversations, { fields: [messages.conversationId], references: [conversations.id] }),
 }));
