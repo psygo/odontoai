@@ -1,7 +1,6 @@
 import { date, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { appointments } from "./appointments";
 import { clinics } from "./clinics";
-import { patients } from "./patients";
+import { customers } from "./customers";
 
 export const paymentMethod = pgEnum("payment_method", [
   "pix",
@@ -19,10 +18,9 @@ export const payments = pgTable("payments", {
   clinicId: uuid("clinic_id")
     .notNull()
     .references(() => clinics.id, { onDelete: "cascade" }),
-  patientId: uuid("patient_id")
+  customerId: uuid("customer_id")
     .notNull()
-    .references(() => patients.id, { onDelete: "cascade" }),
-  appointmentId: uuid("appointment_id").references(() => appointments.id, { onDelete: "set null" }),
+    .references(() => customers.id, { onDelete: "cascade" }),
   // Stored in cents (BRL) to avoid floating point rounding errors.
   amountCents: integer("amount_cents").notNull(),
   method: paymentMethod("method").notNull(),

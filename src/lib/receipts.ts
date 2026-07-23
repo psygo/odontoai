@@ -6,10 +6,10 @@ import { downloadWhatsAppMedia, sendWhatsAppReply } from "@/lib/whatsapp";
 
 interface ReceivePaymentReceiptParams {
   clinicId: string;
-  patientId: string;
+  customerId: string;
   conversationId: string;
   phoneNumberId: string;
-  patientWaId: string;
+  customerWaId: string;
   mediaId: string;
   waMessageId: string;
 }
@@ -18,18 +18,17 @@ const ACK_TEXT =
   "Recebi seu comprovante, valeu! 🙏\n\nNossa equipe vai conferir e confirmar por aqui assim que possível.";
 
 // Downloads the receipt image/PDF and stores it. Never marks anything as
-// paid automatically — that's always a manual dashboard action (same
-// principle as prescriptions requiring a dentist's signature before the
-// agent can touch them). If the patient has exactly one pending payment,
-// the receipt links to it directly; a patient can have several appointments
-// each with their own payment, so anything more ambiguous than that is left
-// unmatched for staff to reconcile by hand.
+// paid automatically — that's always a manual dashboard action. If the
+// customer has exactly one pending payment, the receipt links to it
+// directly; a customer can have several pending payments at once, so
+// anything more ambiguous than that is left unmatched for staff to
+// reconcile by hand.
 export async function receivePaymentReceipt({
   clinicId,
-  patientId,
+  customerId,
   conversationId,
   phoneNumberId,
-  patientWaId,
+  customerWaId,
   mediaId,
   waMessageId,
 }: ReceivePaymentReceiptParams): Promise<void> {
@@ -39,7 +38,7 @@ export async function receivePaymentReceipt({
   const { data, mimeType } = await downloadWhatsAppMedia(mediaId);
 
   const pendingPayments = await db.query.payments.findMany({
-    where: and(eq(payments.clinicId, clinicId), eq(payments.patientId, patientId), eq(payments.status, "pending")),
+    where: and(eq(payments.clinicId, clinicId), eq(payments.customerId, customerId), eq(payments.status, "pending")),
   });
   const matched = pendingPayments.length === 1 ? pendingPayments[0] : undefined;
 
@@ -51,8 +50,7 @@ export async function receivePaymentReceipt({
     await db.transaction(async (tx) => {
       await tx.insert(paymentReceipts).values({
         clinicId,
-        patientId,
-        appointmentId: matched?.appointmentId ?? null,
+        customerId,
         paymentId: matched?.id ?? null,
         imageData: data,
         mimeType,
@@ -62,7 +60,7 @@ export async function receivePaymentReceipt({
       await tx.insert(messages).values({
         conversationId,
         role: "user",
-        content: [{ type: "text", text: "[Paciente enviou um comprovante de pagamento]" }],
+        content: [{ type: "text", text: "[Cliente enviou um comprovante de pagamento]" }],
         waMessageId,
       });
       await tx.insert(messages).values({
@@ -78,5 +76,5 @@ export async function receivePaymentReceipt({
     throw error;
   }
 
-  await sendWhatsAppReply(phoneNumberId, patientWaId, ACK_TEXT);
+  await sendWhatsAppReply(phoneNumberId, customerWaId, ACK_TEXT);
 }

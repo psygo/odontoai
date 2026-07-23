@@ -35,13 +35,6 @@ export function AccountMenu({ name, email, initials }: { name: string; email: st
           </div>
           <div className="my-1 border-t border-border" />
           <Link
-            href="/dashboard/dentists"
-            className="block rounded px-2 py-1.5 text-sm hover:bg-app-bg"
-            onClick={() => setOpen(false)}
-          >
-            Equipe
-          </Link>
-          <Link
             href="/dashboard/settings"
             className="block rounded px-2 py-1.5 text-sm hover:bg-app-bg"
             onClick={() => setOpen(false)}

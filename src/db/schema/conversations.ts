@@ -1,6 +1,6 @@
 import { jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { clinics } from "./clinics";
-import { patients } from "./patients";
+import { customers } from "./customers";
 
 export const conversationStatus = pgEnum("conversation_status", ["active", "escalated", "closed"]);
 
@@ -9,9 +9,9 @@ export const conversations = pgTable("conversations", {
   clinicId: uuid("clinic_id")
     .notNull()
     .references(() => clinics.id, { onDelete: "cascade" }),
-  patientId: uuid("patient_id")
+  customerId: uuid("customer_id")
     .notNull()
-    .references(() => patients.id, { onDelete: "cascade" }),
+    .references(() => customers.id, { onDelete: "cascade" }),
   status: conversationStatus("status").notNull().default("active"),
   escalationReason: text("escalation_reason"),
   lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),

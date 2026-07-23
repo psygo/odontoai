@@ -10,9 +10,8 @@ import { PaymentModal, type PaymentModalState } from "./payment-modal";
 
 export interface PaymentRow {
   id: string;
-  patientId: string;
-  patientName: string;
-  appointmentId: string | null;
+  customerId: string;
+  customerName: string;
   amountCents: number;
   method: string;
   status: string;
@@ -44,11 +43,11 @@ export interface OpenIntent {
 
 export function PaymentsPageClient({
   payments,
-  patients,
+  customers,
   openIntent,
 }: {
   payments: PaymentRow[];
-  patients: { id: string; name: string }[];
+  customers: { id: string; name: string }[];
   openIntent: OpenIntent | null;
 }) {
   const { searchTerm } = useSearchTerm();
@@ -68,7 +67,7 @@ export function PaymentsPageClient({
 
   const search = searchTerm.trim().toLowerCase();
   const filtered = payments.filter(
-    (p) => (statusFilter === "all" || p.status === statusFilter) && (!search || p.patientName.toLowerCase().includes(search)),
+    (p) => (statusFilter === "all" || p.status === statusFilter) && (!search || p.customerName.toLowerCase().includes(search)),
   );
 
   return (
@@ -100,7 +99,7 @@ export function PaymentsPageClient({
 
       <div className="overflow-hidden rounded-[10px] border border-border bg-background">
         <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr_1fr_0.8fr] border-b border-border bg-app-bg px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-ink-muted">
-          <div>Paciente</div>
+          <div>Cliente</div>
           <div>Valor</div>
           <div>Método</div>
           <div>Vencimento</div>
@@ -119,9 +118,8 @@ export function PaymentsPageClient({
                   mode: "edit",
                   payment: {
                     id: payment.id,
-                    patientId: payment.patientId,
-                    patientName: payment.patientName,
-                    appointmentId: payment.appointmentId,
+                    customerId: payment.customerId,
+                    customerName: payment.customerName,
                     amountCents: payment.amountCents,
                     method: payment.method,
                     status: payment.status,
@@ -132,7 +130,7 @@ export function PaymentsPageClient({
               }
               className="truncate text-left font-semibold text-ink hover:underline"
             >
-              {payment.patientName}
+              {payment.customerName}
             </button>
             <div className="text-ink-soft">{formatCents(payment.amountCents)}</div>
             <div className="text-ink-soft">{METHOD_LABELS[payment.method]}</div>
@@ -155,7 +153,7 @@ export function PaymentsPageClient({
         {filtered.length === 0 && <div className="px-4 py-8 text-center text-sm text-ink-muted">Nenhuma cobrança encontrada.</div>}
       </div>
 
-      <PaymentModal state={modal} onClose={() => setModal(null)} patients={patients} />
+      <PaymentModal state={modal} onClose={() => setModal(null)} customers={customers} />
     </div>
   );
 }

@@ -10,19 +10,19 @@ import { extractText } from "./message-text";
 export default async function ConversationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ patientId?: string }>;
+  searchParams: Promise<{ customerId?: string }>;
 }) {
-  const { patientId } = await searchParams;
+  const { customerId } = await searchParams;
   const session = await auth();
   const clinicId = session!.user.clinicId;
 
   const rows = await db.query.conversations.findMany({
-    where: patientId
-      ? and(eq(conversations.clinicId, clinicId), eq(conversations.patientId, patientId))
+    where: customerId
+      ? and(eq(conversations.clinicId, clinicId), eq(conversations.customerId, customerId))
       : eq(conversations.clinicId, clinicId),
     orderBy: (c, { desc }) => [desc(c.lastMessageAt)],
     with: {
-      patient: { columns: { name: true, phone: true } },
+      customer: { columns: { name: true, phone: true } },
       messages: { orderBy: (m, { desc }) => [desc(m.createdAt)], limit: 5 },
     },
   });
@@ -31,7 +31,7 @@ export default async function ConversationsPage({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-extrabold text-ink-strong">Conversas</h1>
-        {patientId && (
+        {customerId && (
           <Link href="/dashboard/conversations" className="text-xs font-semibold text-accent-blue">
             Ver todas as conversas
           </Link>
@@ -41,7 +41,7 @@ export default async function ConversationsPage({
       <div className="overflow-hidden rounded-[10px] border border-border bg-background">
         <div className="grid grid-cols-[auto_1.4fr_2fr_auto_auto] items-center gap-3 border-b border-border bg-app-bg px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-ink-muted">
           <div />
-          <div>Paciente</div>
+          <div>Cliente</div>
           <div>Última mensagem</div>
           <div>Status</div>
           <div></div>
@@ -55,11 +55,11 @@ export default async function ConversationsPage({
               className="grid grid-cols-[auto_1.4fr_2fr_auto_auto] items-center gap-3 border-b border-border/60 px-4 py-3 text-sm hover:bg-app-bg"
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EFF6FF] text-xs font-extrabold text-accent-blue">
-                {initials(c.patient.name)}
+                {initials(c.customer.name)}
               </div>
               <div className="min-w-0">
-                <div className="truncate font-semibold text-ink">{c.patient.name}</div>
-                <div className="truncate text-xs text-ink-muted">{c.patient.phone}</div>
+                <div className="truncate font-semibold text-ink">{c.customer.name}</div>
+                <div className="truncate text-xs text-ink-muted">{c.customer.phone}</div>
               </div>
               <div className="truncate text-ink-faint">{preview}</div>
               <div>

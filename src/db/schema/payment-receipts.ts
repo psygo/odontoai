@@ -1,7 +1,6 @@
 import { customType, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { appointments } from "./appointments";
 import { clinics } from "./clinics";
-import { patients } from "./patients";
+import { customers } from "./customers";
 import { payments } from "./payments";
 
 // node-postgres (the driver underlying both `pg` and `@neondatabase/serverless`)
@@ -12,7 +11,7 @@ const bytea = customType<{ data: Buffer }>({
   },
 });
 
-// A photo/PDF a patient sends over WhatsApp as proof of a Pix transfer. Stored
+// A photo/PDF a customer sends over WhatsApp as proof of a Pix transfer. Stored
 // as-is (not yet reconciled) until staff link it to a specific payment — the
 // image arriving never auto-marks anything as paid.
 export const paymentReceipts = pgTable("payment_receipts", {
@@ -20,14 +19,12 @@ export const paymentReceipts = pgTable("payment_receipts", {
   clinicId: uuid("clinic_id")
     .notNull()
     .references(() => clinics.id, { onDelete: "cascade" }),
-  patientId: uuid("patient_id")
+  customerId: uuid("customer_id")
     .notNull()
-    .references(() => patients.id, { onDelete: "cascade" }),
-  // A patient can have several appointments/treatments each with their own
-  // payment(s), so a bare incoming image can't always be pinned to one
-  // payment automatically — this lets staff (or a confident auto-match)
-  // narrow it to an appointment even before a specific payment is picked.
-  appointmentId: uuid("appointment_id").references(() => appointments.id, { onDelete: "set null" }),
+    .references(() => customers.id, { onDelete: "cascade" }),
+  // A customer can have several pending payments at once, so a bare incoming
+  // image can't always be pinned to one automatically — staff pick the exact
+  // payment by hand (see linkReceiptToPaymentAction).
   paymentId: uuid("payment_id").references(() => payments.id, { onDelete: "set null" }),
   imageData: bytea("image_data").notNull(),
   mimeType: text("mime_type").notNull(),

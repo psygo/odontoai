@@ -4,18 +4,18 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { patients } from "@/db/schema";
+import { customers } from "@/db/schema";
 
 // Handles both create and edit — a single modal/form posts here, with an
-// empty `patientId` meaning "create a new one".
-export async function savePatientAction(_prevState: string | undefined, formData: FormData) {
+// empty `customerId` meaning "create a new one".
+export async function saveCustomerAction(_prevState: string | undefined, formData: FormData) {
   const session = await auth();
   if (!session?.user?.clinicId) {
     return "Sessão inválida. Faça login novamente.";
   }
   const clinicId = session.user.clinicId;
 
-  const patientIdRaw = formData.get("patientId");
+  const customerIdRaw = formData.get("customerId");
   const name = formData.get("name");
   const phone = formData.get("phone");
   const cpf = formData.get("cpf");
@@ -28,17 +28,17 @@ export async function savePatientAction(_prevState: string | undefined, formData
   }
 
   const normalizedPhone = phone.trim().startsWith("+") ? phone.trim() : `+${phone.trim()}`;
-  const patientId = typeof patientIdRaw === "string" && patientIdRaw ? patientIdRaw : null;
+  const customerId = typeof customerIdRaw === "string" && customerIdRaw ? customerIdRaw : null;
 
-  const existing = await db.query.patients.findFirst({
+  const existing = await db.query.customers.findFirst({
     where: and(
-      eq(patients.clinicId, clinicId),
-      eq(patients.phone, normalizedPhone),
-      patientId ? ne(patients.id, patientId) : undefined,
+      eq(customers.clinicId, clinicId),
+      eq(customers.phone, normalizedPhone),
+      customerId ? ne(customers.id, customerId) : undefined,
     ),
   });
   if (existing) {
-    return "Já existe um paciente cadastrado com este telefone.";
+    return "Já existe um cliente cadastrado com este telefone.";
   }
 
   const values = {
@@ -51,13 +51,13 @@ export async function savePatientAction(_prevState: string | undefined, formData
     notes: typeof notes === "string" && notes.trim() ? notes.trim() : null,
   };
 
-  if (patientId) {
-    await db.update(patients).set(values).where(and(eq(patients.id, patientId), eq(patients.clinicId, clinicId)));
+  if (customerId) {
+    await db.update(customers).set(values).where(and(eq(customers.id, customerId), eq(customers.clinicId, clinicId)));
   } else {
-    await db.insert(patients).values(values);
+    await db.insert(customers).values(values);
   }
 
   revalidatePath("/dashboard");
-  revalidatePath("/dashboard/patients");
-  if (patientId) revalidatePath(`/dashboard/patients/${patientId}`);
+  revalidatePath("/dashboard/customers");
+  if (customerId) revalidatePath(`/dashboard/customers/${customerId}`);
 }

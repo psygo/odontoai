@@ -20,7 +20,7 @@ export function PixKeyForm({ pixKey }: { pixKey: string | null }) {
         className="rounded border border-border px-3 py-2 text-sm font-mono"
       />
       <p className="text-sm text-ink-faint">
-        Enviada exatamente como está aqui pela assistente de WhatsApp quando um paciente pergunta
+        Enviada exatamente como está aqui pela assistente de WhatsApp quando um cliente pergunta
         como pagar — a IA nunca digita a chave de memória.
       </p>
       <div>

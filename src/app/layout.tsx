@@ -10,7 +10,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "OdontoAI",
-  description: "CRM para clínicas odontológicas com atendimento de pacientes via IA",
+  description: "Gerenciador de negócios com atendimento de clientes via IA no WhatsApp",
 };
 
 export default function RootLayout({

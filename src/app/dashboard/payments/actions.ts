@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { paymentMethod, paymentReceipts, paymentStatus, payments, patients } from "@/db/schema";
+import { customers, paymentMethod, paymentReceipts, paymentStatus, payments } from "@/db/schema";
 
 // Handles both create and edit — a single modal/form posts here, with an
 // empty `paymentId` meaning "create a new one".
@@ -16,8 +16,7 @@ export async function savePaymentAction(_prevState: string | undefined, formData
   const clinicId = session.user.clinicId;
 
   const paymentIdRaw = formData.get("paymentId");
-  const patientId = formData.get("patientId");
-  const appointmentIdRaw = formData.get("appointmentId");
+  const customerId = formData.get("customerId");
   const amount = formData.get("amount");
   const method = formData.get("method");
   const status = formData.get("status");
@@ -25,14 +24,14 @@ export async function savePaymentAction(_prevState: string | undefined, formData
   const dueDate = formData.get("dueDate");
 
   if (
-    typeof patientId !== "string" ||
-    !patientId ||
+    typeof customerId !== "string" ||
+    !customerId ||
     typeof amount !== "string" ||
     !amount ||
     typeof method !== "string" ||
     !paymentMethod.enumValues.includes(method as (typeof paymentMethod.enumValues)[number])
   ) {
-    return "Preencha paciente, valor e método de pagamento.";
+    return "Preencha cliente, valor e método de pagamento.";
   }
 
   const amountCents = Math.round(Number(amount.replace(",", ".")) * 100);
@@ -40,18 +39,17 @@ export async function savePaymentAction(_prevState: string | undefined, formData
     return "Valor inválido.";
   }
 
-  const patient = await db.query.patients.findFirst({
-    where: and(eq(patients.id, patientId), eq(patients.clinicId, clinicId)),
+  const customer = await db.query.customers.findFirst({
+    where: and(eq(customers.id, customerId), eq(customers.clinicId, clinicId)),
   });
-  if (!patient) {
-    return "Paciente inválido.";
+  if (!customer) {
+    return "Cliente inválido.";
   }
 
   const paymentId = typeof paymentIdRaw === "string" && paymentIdRaw ? paymentIdRaw : null;
   const values = {
     clinicId,
-    patientId,
-    appointmentId: typeof appointmentIdRaw === "string" && appointmentIdRaw ? appointmentIdRaw : null,
+    customerId,
     amountCents,
     method: method as (typeof paymentMethod.enumValues)[number],
     description: typeof description === "string" && description.trim() ? description.trim() : null,
@@ -73,7 +71,7 @@ export async function savePaymentAction(_prevState: string | undefined, formData
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/payments");
-  revalidatePath(`/dashboard/patients/${patientId}`);
+  revalidatePath(`/dashboard/customers/${customerId}`);
 }
 
 export async function markPaymentPaidAction(formData: FormData) {
@@ -93,7 +91,7 @@ export async function markPaymentPaidAction(formData: FormData) {
 }
 
 // Links a receipt the WhatsApp agent couldn't unambiguously match on arrival
-// (patient had zero or multiple pending payments) to the specific payment a
+// (customer had zero or multiple pending payments) to the specific payment a
 // staff member identifies by hand. This never marks the payment as paid by
 // itself — staff still confirms that separately via markPaymentPaidAction.
 export async function linkReceiptToPaymentAction(formData: FormData) {
@@ -112,7 +110,7 @@ export async function linkReceiptToPaymentAction(formData: FormData) {
 
   await db
     .update(paymentReceipts)
-    .set({ paymentId, appointmentId: payment.appointmentId })
+    .set({ paymentId })
     .where(and(eq(paymentReceipts.id, receiptId), eq(paymentReceipts.clinicId, clinicId)));
 
   revalidatePath("/dashboard/payments");

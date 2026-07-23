@@ -6,9 +6,8 @@ import { savePaymentAction } from "./actions";
 
 export interface PaymentDetail {
   id: string;
-  patientId: string;
-  patientName: string;
-  appointmentId: string | null;
+  customerId: string;
+  customerName: string;
   amountCents: number;
   method: string;
   status: string;
@@ -17,7 +16,7 @@ export interface PaymentDetail {
 }
 
 export type PaymentModalState =
-  | { mode: "create"; patientId?: string; appointmentId?: string; description?: string; amountCents?: number }
+  | { mode: "create"; customerId?: string; description?: string; amountCents?: number }
   | { mode: "edit"; payment: PaymentDetail }
   | null;
 
@@ -42,11 +41,11 @@ const inputClass = "rounded-lg border border-border px-3 py-2 text-sm";
 export function PaymentModal({
   state,
   onClose,
-  patients,
+  customers,
 }: {
   state: PaymentModalState;
   onClose: () => void;
-  patients: { id: string; name: string }[];
+  customers: { id: string; name: string }[];
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [submitCount, setSubmitCount] = useState(0);
@@ -96,22 +95,21 @@ export function PaymentModal({
           <div className="text-lg font-extrabold text-ink-strong">{editing ? "Editar cobrança" : "Nova cobrança"}</div>
 
           <input type="hidden" name="paymentId" value={editing?.id ?? ""} />
-          <input type="hidden" name="appointmentId" value={editing?.appointmentId ?? (state.mode === "create" ? state.appointmentId ?? "" : "")} />
 
           {editing ? (
             <>
-              <input type="hidden" name="patientId" value={editing.patientId} />
+              <input type="hidden" name="customerId" value={editing.customerId} />
               <div>
-                <label className="text-xs font-bold uppercase text-ink-faint">Paciente</label>
-                <div className="mt-1 rounded-lg border border-border bg-app-bg px-3 py-2 text-sm">{editing.patientName}</div>
+                <label className="text-xs font-bold uppercase text-ink-faint">Cliente</label>
+                <div className="mt-1 rounded-lg border border-border bg-app-bg px-3 py-2 text-sm">{editing.customerName}</div>
               </div>
             </>
           ) : (
-            <select name="patientId" required defaultValue={state.mode === "create" ? state.patientId ?? "" : ""} className={inputClass}>
-              <option value="">Selecione o paciente...</option>
-              {patients.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
+            <select name="customerId" required defaultValue={state.mode === "create" ? state.customerId ?? "" : ""} className={inputClass}>
+              <option value="">Selecione o cliente...</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>

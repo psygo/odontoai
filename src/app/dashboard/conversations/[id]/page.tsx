@@ -15,7 +15,7 @@ export default async function ConversationDetailPage({ params }: { params: Promi
   const conversation = await db.query.conversations.findFirst({
     where: and(eq(conversations.id, id), eq(conversations.clinicId, clinicId)),
     with: {
-      patient: { columns: { id: true, name: true, phone: true } },
+      customer: { columns: { id: true, name: true, phone: true } },
       messages: { orderBy: (m, { asc }) => [asc(m.createdAt)] },
     },
   });
@@ -36,12 +36,12 @@ export default async function ConversationDetailPage({ params }: { params: Promi
             ← Conversas
           </Link>
           <div className="mt-1 flex items-center gap-2">
-            <Link href={`/dashboard/patients/${conversation.patient.id}`} className="text-lg font-extrabold text-ink-strong hover:underline">
-              {conversation.patient.name}
+            <Link href={`/dashboard/customers/${conversation.customer.id}`} className="text-lg font-extrabold text-ink-strong hover:underline">
+              {conversation.customer.name}
             </Link>
             <StatusBadge {...CONVERSATION_STATUS_STYLE[conversation.status]} />
           </div>
-          <div className="text-xs text-ink-muted">{conversation.patient.phone}</div>
+          <div className="text-xs text-ink-muted">{conversation.customer.phone}</div>
         </div>
       </div>
 

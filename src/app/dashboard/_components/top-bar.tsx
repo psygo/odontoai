@@ -6,18 +6,15 @@ import { useSearchTerm } from "./search-provider";
 
 const TITLES: { match: (p: string) => boolean; label: string }[] = [
   { match: (p) => p === "/dashboard", label: "Início" },
-  { match: (p) => p.startsWith("/dashboard/calendar"), label: "Agenda" },
-  { match: (p) => p.startsWith("/dashboard/appointments"), label: "Consultas" },
   { match: (p) => p.startsWith("/dashboard/payments"), label: "Faturamento" },
-  { match: (p) => p.startsWith("/dashboard/patients"), label: "Pacientes" },
-  { match: (p) => p.startsWith("/dashboard/prescriptions"), label: "Receitas" },
-  { match: (p) => p.startsWith("/dashboard/dentists"), label: "Equipe" },
+  { match: (p) => p.startsWith("/dashboard/customers"), label: "Clientes" },
+  { match: (p) => p.startsWith("/dashboard/conversations"), label: "Conversas" },
   { match: (p) => p.startsWith("/dashboard/settings"), label: "Configurações" },
 ];
 
-// Matches the mock: the top-bar search only filters the Appointments and
-// Billing lists, not the Patients directory (which has no search bar there).
-const SEARCHABLE_PREFIXES = ["/dashboard/appointments", "/dashboard/payments"];
+// Matches the mock: the top-bar search only filters the Billing list, not
+// the Customers directory (which has no search bar there).
+const SEARCHABLE_PREFIXES = ["/dashboard/payments"];
 
 export function TopBar({ clinicName }: { clinicName: string }) {
   const pathname = usePathname();
@@ -35,17 +32,17 @@ export function TopBar({ clinicName }: { clinicName: string }) {
       {showSearch && (
         <input
           type="text"
-          placeholder="Buscar pacientes…"
+          placeholder="Buscar clientes…"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-56 rounded-lg border border-border bg-app-bg px-3 py-2 text-sm outline-none"
         />
       )}
       <Link
-        href="/dashboard/calendar?new=1"
+        href="/dashboard/customers?new=1"
         className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-accent-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-blue-hover"
       >
-        <span className="text-base leading-none">+</span> Nova Consulta
+        <span className="text-base leading-none">+</span> Novo Cliente
       </Link>
     </div>
   );

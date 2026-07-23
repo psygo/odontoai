@@ -1,9 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { savePatientAction } from "./actions";
+import { saveCustomerAction } from "./actions";
 
-export interface PatientDetail {
+export interface CustomerDetail {
   id: string;
   name: string;
   phone: string;
@@ -13,14 +13,14 @@ export interface PatientDetail {
   notes: string | null;
 }
 
-export type PatientModalState = { mode: "create" } | { mode: "edit"; patient: PatientDetail } | null;
+export type CustomerModalState = { mode: "create" } | { mode: "edit"; customer: CustomerDetail } | null;
 
 const inputClass = "rounded-lg border border-border px-3 py-2 text-sm";
 
-export function PatientModal({ state, onClose }: { state: PatientModalState; onClose: () => void }) {
+export function CustomerModal({ state, onClose }: { state: CustomerModalState; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [submitCount, setSubmitCount] = useState(0);
-  const [errorMessage, formAction, isPending] = useActionState(savePatientAction, undefined);
+  const [errorMessage, formAction, isPending] = useActionState(saveCustomerAction, undefined);
   const [prevState, setPrevState] = useState(state);
 
   if (state !== prevState) {
@@ -48,7 +48,7 @@ export function PatientModal({ state, onClose }: { state: PatientModalState; onC
     return <dialog ref={dialogRef} onClose={onClose} className="m-auto rounded-2xl border-0 p-0 backdrop:bg-black/45" />;
   }
 
-  const editing = state.mode === "edit" ? state.patient : undefined;
+  const editing = state.mode === "edit" ? state.customer : undefined;
 
   return (
     <dialog
@@ -61,9 +61,9 @@ export function PatientModal({ state, onClose }: { state: PatientModalState; onC
     >
       <div className="max-h-[88vh] overflow-auto p-5.5" onClick={(e) => e.stopPropagation()}>
         <form key={JSON.stringify(state)} action={formAction} onSubmit={() => setSubmitCount((c) => c + 1)} className="flex flex-col gap-3">
-          <div className="text-lg font-extrabold text-ink-strong">{editing ? "Editar paciente" : "Novo paciente"}</div>
+          <div className="text-lg font-extrabold text-ink-strong">{editing ? "Editar cliente" : "Novo cliente"}</div>
 
-          <input type="hidden" name="patientId" value={editing?.id ?? ""} />
+          <input type="hidden" name="customerId" value={editing?.id ?? ""} />
 
           <input name="name" type="text" placeholder="Nome completo" required defaultValue={editing?.name ?? ""} className={inputClass} />
           <input

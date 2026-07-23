@@ -2,25 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AppointmentsIcon, BillingIcon, CalendarIcon, ChatIcon, HomeIcon, PatientsIcon, RxIcon } from "./icons";
+import { BillingIcon, ChatIcon, HomeIcon, PatientsIcon } from "./icons";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Início", Icon: HomeIcon, match: (p: string) => p === "/dashboard" },
-  { href: "/dashboard/calendar", label: "Agenda", Icon: CalendarIcon, match: (p: string) => p.startsWith("/dashboard/calendar") },
-  {
-    href: "/dashboard/appointments",
-    label: "Consultas",
-    Icon: AppointmentsIcon,
-    match: (p: string) => p.startsWith("/dashboard/appointments"),
-  },
+  { href: "/dashboard/customers", label: "Clientes", Icon: PatientsIcon, match: (p: string) => p.startsWith("/dashboard/customers") },
   { href: "/dashboard/payments", label: "Faturas", Icon: BillingIcon, match: (p: string) => p.startsWith("/dashboard/payments") },
-  { href: "/dashboard/patients", label: "Pacientes", Icon: PatientsIcon, match: (p: string) => p.startsWith("/dashboard/patients") },
-  {
-    href: "/dashboard/prescriptions",
-    label: "Receitas",
-    Icon: RxIcon,
-    match: (p: string) => p.startsWith("/dashboard/prescriptions"),
-  },
   {
     href: "/dashboard/conversations",
     label: "Conversas",
