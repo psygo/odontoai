@@ -33,3 +33,7 @@ body {
   background: var(--color-app-bg);
   color: var(--foreground);
 }
+
+button:not(:disabled) {
+  cursor: pointer;
+}

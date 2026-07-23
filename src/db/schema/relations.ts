@@ -1,15 +1,28 @@
 import { relations } from "drizzle-orm";
+import { clinicMemberships } from "./clinic-memberships";
 import { clinics } from "./clinics";
 import { conversations, messages } from "./conversations";
 import { customers } from "./customers";
 import { paymentReceipts } from "./payment-receipts";
 import { payments } from "./payments";
+import { users } from "./users";
 
 export const clinicsRelations = relations(clinics, ({ many }) => ({
   customers: many(customers),
   payments: many(payments),
   paymentReceipts: many(paymentReceipts),
   conversations: many(conversations),
+  memberships: many(clinicMemberships),
+}));
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  lastActiveClinic: one(clinics, { fields: [users.lastActiveClinicId], references: [clinics.id] }),
+  memberships: many(clinicMemberships),
+}));
+
+export const clinicMembershipsRelations = relations(clinicMemberships, ({ one }) => ({
+  user: one(users, { fields: [clinicMemberships.userId], references: [users.id] }),
+  clinic: one(clinics, { fields: [clinicMemberships.clinicId], references: [clinics.id] }),
 }));
 
 export const customersRelations = relations(customers, ({ one, many }) => ({

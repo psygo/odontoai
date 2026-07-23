@@ -9,11 +9,11 @@ export default function SignUpPage() {
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Criar conta da clínica</h1>
+      <h1 className="text-xl font-semibold">Criar conta do negócio</h1>
 
       <div className="flex flex-col gap-1">
         <label htmlFor="clinicName" className="text-sm">
-          Nome da clínica
+          Nome do negócio
         </label>
         <input
           id="clinicName"

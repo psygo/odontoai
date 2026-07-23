@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BusinessSwitcher, type BusinessOption } from "./business-switcher";
 import { useSearchTerm } from "./search-provider";
 
 const TITLES: { match: (p: string) => boolean; label: string }[] = [
@@ -9,6 +10,7 @@ const TITLES: { match: (p: string) => boolean; label: string }[] = [
   { match: (p) => p.startsWith("/dashboard/payments"), label: "Faturamento" },
   { match: (p) => p.startsWith("/dashboard/customers"), label: "Clientes" },
   { match: (p) => p.startsWith("/dashboard/conversations"), label: "Conversas" },
+  { match: (p) => p.startsWith("/dashboard/extensions"), label: "Extensões" },
   { match: (p) => p.startsWith("/dashboard/settings"), label: "Configurações" },
 ];
 
@@ -16,7 +18,15 @@ const TITLES: { match: (p: string) => boolean; label: string }[] = [
 // the Customers directory (which has no search bar there).
 const SEARCHABLE_PREFIXES = ["/dashboard/payments"];
 
-export function TopBar({ clinicName }: { clinicName: string }) {
+export function TopBar({
+  businesses,
+  activeClinicId,
+  fallbackName,
+}: {
+  businesses: BusinessOption[];
+  activeClinicId: string;
+  fallbackName: string;
+}) {
   const pathname = usePathname();
   const { searchTerm, setSearchTerm } = useSearchTerm();
 
@@ -25,7 +35,7 @@ export function TopBar({ clinicName }: { clinicName: string }) {
 
   return (
     <div className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background px-6">
-      <div className="text-[17px] font-extrabold text-ink-strong">{clinicName}</div>
+      <BusinessSwitcher businesses={businesses} activeClinicId={activeClinicId} fallbackName={fallbackName} />
       <div className="h-6.5 w-px bg-border" />
       <div className="text-[15px] font-semibold text-ink-soft">{title}</div>
       <div className="flex-1" />

@@ -17,7 +17,7 @@ export function AccountMenu({ name, email, initials }: { name: string; email: st
   }, []);
 
   return (
-    <div ref={ref} className="relative mt-auto">
+    <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

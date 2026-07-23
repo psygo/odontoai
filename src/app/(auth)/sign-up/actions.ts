@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
 import { db } from "@/db";
-import { clinics, users } from "@/db/schema";
+import { clinicMemberships, clinics, users } from "@/db/schema";
 
 export async function signUpAction(_prevState: string | undefined, formData: FormData) {
   const clinicName = formData.get("clinicName");
@@ -39,13 +39,16 @@ export async function signUpAction(_prevState: string | undefined, formData: For
 
   await db.transaction(async (tx) => {
     const [clinic] = await tx.insert(clinics).values({ name: clinicName.trim() }).returning();
-    await tx.insert(users).values({
-      clinicId: clinic.id,
-      name: name.trim(),
-      email: normalizedEmail,
-      passwordHash,
-      role: "admin",
-    });
+    const [user] = await tx
+      .insert(users)
+      .values({
+        name: name.trim(),
+        email: normalizedEmail,
+        passwordHash,
+        lastActiveClinicId: clinic.id,
+      })
+      .returning();
+    await tx.insert(clinicMemberships).values({ userId: user.id, clinicId: clinic.id, role: "admin" });
   });
 
   try {

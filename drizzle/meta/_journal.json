@@ -50,6 +50,13 @@
       "when": 1784742300800,
       "tag": "0006_generalize_to_customers",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784810296837,
+      "tag": "0007_multi_business_support",
+      "breakpoints": true
     }
   ]
 }

@@ -54,3 +54,30 @@ export function ChatIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function PuzzleIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M9 3.5a1.5 1.5 0 013 0V5h2a2 2 0 012 2v2h1.5a1.5 1.5 0 010 3H16v2a2 2 0 01-2 2h-2v1.5a1.5 1.5 0 01-3 0V16H7a2 2 0 01-2-2v-2H3.5a1.5 1.5 0 010-3H5V7a2 2 0 012-2h2V3.5z" />
+    </Svg>
+  );
+}
+
+export function AddBusinessIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 21V7l6-4 6 4v14" />
+      <path d="M4 21h16" />
+      <path d="M10 21v-6h4v6" />
+      <path d="M18 9v6M15 12h6" />
+    </Svg>
+  );
+}
+
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 9l6 6 6-6" />
+    </Svg>
+  );
+}

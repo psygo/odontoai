@@ -1,4 +1,4 @@
-# OdontoAI
+# Business Manager
 
 CRM for dental clinics in Brazil. A WhatsApp AI agent handles patient-facing
 interactions (scheduling, basic recommendations, forwarding dentist-issued

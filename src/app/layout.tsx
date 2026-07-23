@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "OdontoAI",
+  title: "Business Manager",
   description: "Gerenciador de negócios com atendimento de clientes via IA no WhatsApp",
 };
 

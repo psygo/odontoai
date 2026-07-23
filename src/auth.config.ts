@@ -21,10 +21,16 @@ export const authConfig = {
 
       return true;
     },
-    jwt({ token, user }) {
+    jwt({ token, user, trigger, session }) {
       if (user) {
         token.role = user.role;
         token.clinicId = user.clinicId;
+      }
+      // Triggered by unstable_update() from switchBusinessAction/createBusinessAction
+      // — re-stamps the token with the newly active business without a full re-login.
+      if (trigger === "update" && session?.user?.clinicId) {
+        token.clinicId = session.user.clinicId;
+        token.role = session.user.role;
       }
       return token;
     },
@@ -34,6 +40,7 @@ export const authConfig = {
       if (session.user && token.role && token.clinicId) {
         session.user.role = token.role;
         session.user.clinicId = token.clinicId;
+        session.user.id = token.sub!;
       }
       return session;
     },

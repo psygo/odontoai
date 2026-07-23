@@ -52,7 +52,7 @@ export default function SignInPage() {
       <p className="text-sm text-center text-black/60">
         Ainda não tem uma conta?{" "}
         <Link href="/sign-up" className="underline">
-          Criar conta da clínica
+          Criar conta do negócio
         </Link>
       </p>
     </form>
